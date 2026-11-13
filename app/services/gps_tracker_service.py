@@ -1,20 +1,24 @@
-"""LiveGPSTrackerService providing real-time train GPS telemetry across Manchester."""
+"""LiveGPSTrackerService providing real-time train GPS, coach crowding, and postcode distance."""
 
 from __future__ import annotations
 
 import time
 from typing import Any, Dict, List, Optional
 
-from app.models.transit import Coordinates, FacilityStatus, Station, Train
+from app.models.transit import CoachStatus, Coordinates, FacilityStatus, Station, Train
 
 
 class LiveGPSTrackerService:
-    """Simulates and serves continuous live GPS positions for Manchester rail/tram lines.
+    """Serves real-time GPS positions, coach accessibility, and postcode commute legs."""
 
-    Provides real-world Greater Manchester WGS84 coordinates, live train bearings,
-    platform arrival countdowns, and verified lift/ramp status so Maya can travel
-    spontaneously without ringing ahead.
-    """
+    POSTCODE_COORDS: Dict[str, Coordinates] = {
+        "M21": Coordinates(53.4415, -2.2758),
+        "M19": Coordinates(53.4125, -2.2225),
+        "M15": Coordinates(53.4685, -2.2550),
+        "M3": Coordinates(53.4810, -2.2475),
+        "M2": Coordinates(53.4788, -2.2442),
+        "M1": Coordinates(53.4762, -2.2345),
+    }
 
     def __init__(self) -> None:
         self._stations: Dict[str, Station] = self._build_manchester_stations()
@@ -27,85 +31,99 @@ class LiveGPSTrackerService:
                 station_id="EDID",
                 name="East Didsbury",
                 coordinates=Coordinates(53.4102, -2.2201),
-                address="Kingsway, East Didsbury, Manchester M19 1TB",
+                address="Kingsway, East Didsbury, Manchester",
+                postcode="M19 1TB",
                 has_level_boarding=True,
                 lift_status=FacilityStatus.OPERATIONAL,
                 ramp_status=FacilityStatus.OPERATIONAL,
                 accessible_platforms=["Platform 1 (Level)", "Platform 2 (Level)"],
                 verified_minutes_ago=1,
-                accessibility_note="Full step-free street-to-carriage level boarding. Tactile & audio beacons active.",
+                accessibility_note="Step-free street-to-coach level boarding. Audio & tactile beacons active.",
+                schematic_xy=(300, 232),
             ),
             Station(
                 station_id="CHOR",
                 name="Chorlton",
                 coordinates=Coordinates(53.4426, -2.2738),
-                address="Wilbraham Road, Chorlton, Manchester M21 0AN",
+                address="Wilbraham Road, Chorlton, Manchester",
+                postcode="M21 0AN",
                 has_level_boarding=True,
                 lift_status=FacilityStatus.OPERATIONAL,
                 ramp_status=FacilityStatus.OPERATIONAL,
                 accessible_platforms=["Platform 1 (Level)", "Platform 2 (Level)"],
                 verified_minutes_ago=1,
-                accessibility_note="Maya's local hub — verified lift & zero-step level boarding.",
+                accessibility_note="Maya's local stop — lift verified working & zero-step level boarding.",
+                schematic_xy=(76, 206),
             ),
             Station(
                 station_id="DEAN",
                 name="Deansgate-Castlefield",
                 coordinates=Coordinates(53.4744, -2.2509),
-                address="Whitworth Street West, Manchester M3 4LG",
+                address="Whitworth Street West, Manchester",
+                postcode="M3 4LG",
                 has_level_boarding=True,
                 lift_status=FacilityStatus.OPERATIONAL,
                 ramp_status=FacilityStatus.OPERATIONAL,
                 accessible_platforms=["Platform A (Level)", "Platform B (Level)"],
                 verified_minutes_ago=2,
-                accessibility_note="Dual lifts operational; step-free interchange with clear visual displays.",
+                accessibility_note="Dual lifts operational; step-free interchange & clear visual boards.",
+                schematic_xy=(98, 134),
             ),
             Station(
                 station_id="OXFD",
                 name="Manchester Oxford Road",
                 coordinates=Coordinates(53.4739, -2.2418),
-                address="Station Approach, Oxford Road, Manchester M1 6FU",
+                address="Station Approach, Oxford Road, Manchester",
+                postcode="M1 6FU",
                 has_level_boarding=False,
                 lift_status=FacilityStatus.OUT_OF_SERVICE,
                 ramp_status=FacilityStatus.OPERATIONAL,
                 accessible_platforms=["Platform 1"],
                 verified_minutes_ago=3,
-                accessibility_note="ALERT: Platform 2/3 lift out of service today. Use Deansgate or Piccadilly for independent step-free access.",
+                accessibility_note="LIFT OUT OF SERVICE on Platforms 2/3. Route flagged — use St Peter's Sq or Deansgate.",
+                schematic_xy=(212, 166),
             ),
             Station(
                 station_id="STPS",
                 name="St Peter's Square",
                 coordinates=Coordinates(53.4781, -2.2435),
-                address="St Peter's Square, City Centre, Manchester M2 3DE",
+                address="St Peter's Square, City Centre, Manchester",
+                postcode="M2 3DE",
                 has_level_boarding=True,
                 lift_status=FacilityStatus.OPERATIONAL,
                 ramp_status=FacilityStatus.OPERATIONAL,
-                accessible_platforms=["Platform 1", "Platform 2", "Platform 3", "Platform 4"],
+                accessible_platforms=["Platforms 1-4 (Plaza Level)"],
                 verified_minutes_ago=1,
-                accessibility_note="100% plaza-level step-free access directly to office district — zero lifts needed.",
+                accessibility_note="100% plaza-level step-free access — zero lifts needed.",
+                schematic_xy=(182, 96),
             ),
             Station(
                 station_id="PICC",
                 name="Manchester Piccadilly",
                 coordinates=Coordinates(53.4774, -2.2309),
-                address="Piccadilly Station Approach, Manchester M1 2BN",
+                address="Piccadilly Station Approach, Manchester",
+                postcode="M1 2BN",
                 has_level_boarding=True,
                 lift_status=FacilityStatus.OPERATIONAL,
                 ramp_status=FacilityStatus.OPERATIONAL,
-                accessible_platforms=["Platform A/B (Level)", "Platforms 1-12 (Step-Free)"],
+                accessible_platforms=["Platforms A/B (Level)", "Platforms 1-12"],
                 verified_minutes_ago=1,
-                accessibility_note="All concourse lifts verified working. Auto-host digital beacon online.",
+                accessibility_note="All lifts verified operational. Auto-ramp crew terminal active.",
+                schematic_xy=(308, 114),
             ),
             Station(
                 station_id="VICT",
                 name="Manchester Victoria",
                 coordinates=Coordinates(53.4875, -2.2424),
-                address=" Todd Street, Manchester M3 1WY",
+                address="Todd Street, Manchester",
+                postcode="M3 1WY",
                 has_level_boarding=True,
                 lift_status=FacilityStatus.OPERATIONAL,
                 ramp_status=FacilityStatus.OPERATIONAL,
-                accessible_platforms=["Metrolink A-C (Level)", "Rail 1-6 (Lifts OK)"],
+                accessible_platforms=["Metrolink A-C (Level)", "Rail 1-6"],
                 verified_minutes_ago=2,
-                accessibility_note="Step-free entrance & level boarding bays verified active.",
+                accessibility_note="Step-free concourse entrance & accessible boarding zones active.",
+                schematic_xy=(206, 36),
             ),
         ]
         return {station.station_id: station for station in station_list}
@@ -116,64 +134,128 @@ class LiveGPSTrackerService:
             Train(
                 train_id="TR-101",
                 line_name="South Manchester Step-Free Line",
-                line_color="#80ef80",
+                line_color="#289e60",
                 route_station_ids=["EDID", "CHOR", "DEAN", "STPS", "VICT"],
                 cycle_duration_seconds=300,
                 phase_offset_seconds=25,
                 speed_kmh=44.0,
                 has_level_boarding=True,
-                accessible_carriage="Carriage B (Level-Boarding Bay)",
+                accessible_carriage="Coach B (Doors 3 & 4 · Level-Boarding)",
                 wheelchair_bays_total=4,
                 wheelchair_bays_free=3,
+                base_fare_gbp=3.60,
+                coaches=[
+                    CoachStatus("Coach A", True, True, True, 2, 1, 45, "Wheelchair Accessible + Quiet Sensory Zone"),
+                    CoachStatus("Coach B", True, True, False, 2, 2, 34, "Primary Wheelchair Level-Boarding & Auto-Ramp"),
+                    CoachStatus("Coach C", False, False, False, 0, 0, 93, "Standard Coach — TOO FULL (93% Crowded)"),
+                ],
             ),
             Train(
                 train_id="TR-104",
                 line_name="South Manchester Step-Free Line",
-                line_color="#80ef80",
+                line_color="#289e60",
                 route_station_ids=["EDID", "CHOR", "DEAN", "STPS", "VICT"],
                 cycle_duration_seconds=300,
                 phase_offset_seconds=175,
                 speed_kmh=41.0,
                 has_level_boarding=True,
-                accessible_carriage="Carriage B (Level-Boarding Bay)",
+                accessible_carriage="Coach B (Doors 3 & 4 · Level-Boarding)",
                 wheelchair_bays_total=4,
                 wheelchair_bays_free=2,
+                base_fare_gbp=3.60,
+                coaches=[
+                    CoachStatus("Coach A", True, True, True, 2, 2, 38, "Wheelchair Accessible + Quiet Sensory Zone"),
+                    CoachStatus("Coach B", True, True, False, 2, 0, 88, "Wheelchair Bays FULL — Use Coach A"),
+                    CoachStatus("Coach C", False, False, False, 0, 0, 65, "Standard Seating"),
+                ],
             ),
             Train(
                 train_id="TR-208",
                 line_name="Piccadilly City Express",
-                line_color="#56c8ff",
+                line_color="#8b6cdf",
                 route_station_ids=["CHOR", "DEAN", "STPS", "PICC"],
                 cycle_duration_seconds=240,
                 phase_offset_seconds=60,
                 speed_kmh=38.0,
                 has_level_boarding=True,
-                accessible_carriage="Carriage A (Double Wheelchair Zone)",
+                accessible_carriage="Coach A (Double Wheelchair & Ramp Zone)",
                 wheelchair_bays_total=3,
                 wheelchair_bays_free=2,
+                base_fare_gbp=4.10,
+                coaches=[
+                    CoachStatus("Coach A", True, True, True, 3, 2, 40, "Double Wheelchair Bay + Auto-Ramp"),
+                    CoachStatus("Coach B", False, True, False, 0, 0, 58, "Priority Seating & Audio-Visual Display"),
+                    CoachStatus("Coach C", False, False, False, 0, 0, 91, "Standard Coach — TOO FULL (91% Crowded)"),
+                ],
             ),
             Train(
                 train_id="TR-312",
                 line_name="Oxford Corridor Regional Rail",
-                line_color="#ffb347",
+                line_color="#b197fc",
                 route_station_ids=["DEAN", "OXFD", "PICC", "VICT"],
                 cycle_duration_seconds=260,
                 phase_offset_seconds=120,
                 speed_kmh=48.0,
                 has_level_boarding=False,
-                accessible_carriage="Carriage C (Auto-Ramp Deployed by Host)",
+                accessible_carriage="Coach B (Crew Ramp Deployment Required)",
                 wheelchair_bays_total=2,
                 wheelchair_bays_free=1,
+                base_fare_gbp=3.90,
+                coaches=[
+                    CoachStatus("Coach A", False, False, True, 0, 0, 52, "Quiet Coach"),
+                    CoachStatus("Coach B", True, False, False, 2, 1, 64, "Accessible Bay (Crew Ramp Deployment)"),
+                    CoachStatus("Coach C", False, False, False, 0, 0, 89, "Standard Coach — TOO FULL (89% Crowded)"),
+                ],
             ),
         ]
 
     def list_stations(self) -> List[Station]:
-        """Return all stations in corridor order."""
         return list(self._stations.values())
 
     def get_station(self, station_id: str) -> Optional[Station]:
-        """Look up a single station by code."""
         return self._stations.get(station_id)
+
+    def estimate_house_to_station_commute(
+        self,
+        postcode: str,
+        address: str,
+        station: Station,
+    ) -> Dict[str, Any]:
+        """Compute full street-level commute from origin postcode/house to station platform."""
+        clean_pc = (postcode or "M21 0UF").strip().upper()
+        outward = clean_pc.split()[0] if clean_pc else "M21"
+        house_coords = self.POSTCODE_COORDS.get(outward, Coordinates(53.4418, -2.2752))
+
+        raw_km = max(0.25, round(house_coords.distance_km_to(station.coordinates), 2))
+        # Cap local street-to-station roll/walk at realistic 0.3–1.8 km for selected local station,
+        # or reflect longer taxi/bus transfer if far postcode
+        street_minutes = max(4, min(22, int(round(raw_km * 9))))
+        platform_buffer_minutes = 4
+        total_pre_train_minutes = street_minutes + platform_buffer_minutes
+
+        street_mode = (
+            "Step-free dropped-kerb pavement roll/walk"
+            if raw_km <= 1.8
+            else "Accessible low-floor shuttle / WAV approach"
+        )
+
+        return {
+            "origin_postcode": clean_pc,
+            "origin_address": address or f"Postcode {clean_pc}",
+            "station_id": station.station_id,
+            "station_name": station.name,
+            "station_postcode": station.postcode,
+            "distance_km": raw_km,
+            "street_commute_minutes": street_minutes,
+            "platform_buffer_minutes": platform_buffer_minutes,
+            "total_house_to_train_minutes": total_pre_train_minutes,
+            "commute_mode": street_mode,
+            "route_description": (
+                f"{street_mode} from {address or clean_pc} ({clean_pc}) → "
+                f"{station.name} step-free entrance ({station.postcode}): "
+                f"{street_minutes} min commute + {platform_buffer_minutes} min lift/boarding buffer."
+            ),
+        }
 
     def get_live_snapshot(
         self,
@@ -182,7 +264,6 @@ class LiveGPSTrackerService:
         user_lon: Optional[float] = None,
         timestamp_override: Optional[float] = None,
     ) -> Dict[str, Any]:
-        """Return real-time GPS telemetry for all trains, stations, and user proximity."""
         now_ts = timestamp_override if timestamp_override is not None else time.time()
         effective_station_id = (
             selected_station_id
@@ -222,7 +303,6 @@ class LiveGPSTrackerService:
             for train in self._trains
         ]
 
-        # Sort trains so those arriving soonest at selected station appear first
         live_trains.sort(
             key=lambda t: (
                 0 if t["serves_selected_station"] else 1,
@@ -246,7 +326,6 @@ class LiveGPSTrackerService:
         status_str: str,
         note: str,
     ) -> Station:
-        """Update live lift/ramp reliability state on a station."""
         station = self._stations.get(station_id)
         if station is None:
             raise ValueError(f"Unknown station ID: {station_id}")
@@ -259,4 +338,3 @@ class LiveGPSTrackerService:
         else:
             raise ValueError("facility_type must be 'lift' or 'ramp'.")
         return station
-

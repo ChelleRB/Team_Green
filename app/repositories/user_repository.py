@@ -1,4 +1,4 @@
-"""UserRepository encapsulating CRUD operations for User and saved preferences."""
+"""UserRepository encapsulating CRUD operations for User, EmergencyContact, and Preferences."""
 
 from __future__ import annotations
 
@@ -6,25 +6,24 @@ import json
 import sqlite3
 from typing import Optional
 
-from app.models.user import AccessibilityPreferences, User
+from app.models.user import AccessibilityPreferences, EmergencyContact, User
 from app.repositories.database import DatabaseManager
 
 
 class UserRepository:
-    """Data-access layer for User accounts and saved accessibility profiles."""
+    """Data-access layer for User accounts, emergency contacts, and saved preferences."""
 
     def __init__(self, db_manager: DatabaseManager) -> None:
         self.db_manager = db_manager
 
     def create(self, user: User) -> User:
-        """Persist a new user and populate its generated database ID."""
         with self.db_manager.connection() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO users (
                     full_name, email, password_hash, home_address, postcode,
-                    preferences_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    preferences_json, emergency_contact_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user.full_name,
@@ -33,6 +32,7 @@ class UserRepository:
                     user.home_address,
                     user.postcode,
                     json.dumps(user.preferences.to_dict()),
+                    json.dumps(user.emergency_contact.to_dict()),
                     user.created_at,
                 ),
             )
@@ -40,7 +40,6 @@ class UserRepository:
         return user
 
     def find_by_email(self, email: str) -> Optional[User]:
-        """Look up a user by email address (case-insensitive)."""
         normalized_email = email.strip().lower()
         with self.db_manager.connection() as conn:
             row = conn.execute(
@@ -50,7 +49,6 @@ class UserRepository:
         return self._row_to_user(row) if row else None
 
     def find_by_id(self, user_id: int) -> Optional[User]:
-        """Look up a user by primary key ID."""
         with self.db_manager.connection() as conn:
             row = conn.execute(
                 "SELECT * FROM users WHERE id = ?",
@@ -59,7 +57,6 @@ class UserRepository:
         return self._row_to_user(row) if row else None
 
     def save_profile_and_preferences(self, user: User) -> User:
-        """Update saved address and one-click wheelchair preferences for a user."""
         if user.id is None:
             raise ValueError("Cannot update a user without a database ID.")
         with self.db_manager.connection() as conn:
@@ -69,7 +66,8 @@ class UserRepository:
                 SET full_name = ?,
                     home_address = ?,
                     postcode = ?,
-                    preferences_json = ?
+                    preferences_json = ?,
+                    emergency_contact_json = ?
                 WHERE id = ?
                 """,
                 (
@@ -77,6 +75,7 @@ class UserRepository:
                     user.home_address,
                     user.postcode,
                     json.dumps(user.preferences.to_dict()),
+                    json.dumps(user.emergency_contact.to_dict()),
                     user.id,
                 ),
             )
@@ -86,6 +85,8 @@ class UserRepository:
     def _row_to_user(row: sqlite3.Row) -> User:
         prefs_data = json.loads(row["preferences_json"])
         preferences = AccessibilityPreferences.from_dict(prefs_data)
+        ec_raw = row["emergency_contact_json"] if "emergency_contact_json" in row.keys() else "{}"
+        emergency_contact = EmergencyContact.from_dict(json.loads(ec_raw or "{}"))
         return User(
             user_id=row["id"],
             full_name=row["full_name"],
@@ -94,6 +95,6 @@ class UserRepository:
             home_address=row["home_address"],
             postcode=row["postcode"],
             preferences=preferences,
+            emergency_contact=emergency_contact,
             created_at=row["created_at"],
         )
-

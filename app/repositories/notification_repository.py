@@ -1,4 +1,4 @@
-"""NotificationRepository storing silent host alerts and live facility reports."""
+"""NotificationRepository storing boarding, ramp deployment, and arrival notifications."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from app.repositories.database import DatabaseManager
 
 
 class NotificationRepository:
-    """Data-access layer for host boarding notifications and station status reports."""
+    """Data-access layer for train crew/ramp alerts and station status reports."""
 
     def __init__(self, db_manager: DatabaseManager) -> None:
         self.db_manager = db_manager
@@ -18,15 +18,14 @@ class NotificationRepository:
     def create_host_notification(
         self, notification: HostNotification
     ) -> HostNotification:
-        """Persist a host alert so the user has an audit trail of silent notifications."""
         with self.db_manager.connection() as conn:
             cursor = conn.execute(
                 """
                 INSERT INTO host_notifications (
                     user_id, passenger_name, train_id, station_id, station_name,
                     wheelchair_type, preferred_carriage, step_free_level_boarding,
-                    message, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    message, notification_stage, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     notification.user_id,
@@ -38,6 +37,7 @@ class NotificationRepository:
                     notification.preferred_carriage,
                     1 if notification.step_free_level_boarding else 0,
                     notification.message,
+                    notification.notification_stage,
                     notification.status,
                     notification.created_at,
                 ),
@@ -46,7 +46,6 @@ class NotificationRepository:
         return notification
 
     def list_for_user(self, user_id: int, limit: int = 8) -> List[HostNotification]:
-        """Return recent host notifications triggered by the given user."""
         with self.db_manager.connection() as conn:
             rows = conn.execute(
                 """
@@ -70,6 +69,11 @@ class NotificationRepository:
                 preferred_carriage=row["preferred_carriage"],
                 step_free_level_boarding=bool(row["step_free_level_boarding"]),
                 message=row["message"],
+                notification_stage=(
+                    row["notification_stage"]
+                    if "notification_stage" in row.keys()
+                    else "boarding"
+                ),
                 status=row["status"],
                 created_at=row["created_at"],
             )
@@ -84,7 +88,6 @@ class NotificationRepository:
         status: str,
         note: str,
     ) -> Dict[str, Any]:
-        """Save a live ramp/lift status update submitted by a commuter."""
         created_at = datetime.now(timezone.utc).isoformat()
         with self.db_manager.connection() as conn:
             cursor = conn.execute(
@@ -105,4 +108,3 @@ class NotificationRepository:
             "note": note,
             "created_at": created_at,
         }
-

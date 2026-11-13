@@ -3,63 +3,98 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}GlidePath · Step-Free Live Rail for Independent Travel{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <title>{% block title %}AccessRail · Inclusive Door-to-Door Mobile Rail{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css', v='3') }}">
 </head>
 <body class="{% if current_user and current_user.preferences.visual_guidance_high_contrast %}high-contrast{% endif %}"
       data-authenticated="{{ 'true' if current_user else 'false' }}"
+      data-user-name="{{ current_user.full_name if current_user else '' }}"
+      data-user-postcode="{{ current_user.postcode if current_user else 'M21 0UF' }}"
+      data-user-address="{{ current_user.home_address if current_user else '42 Wilbraham Road, Chorlton' }}"
+      data-emergency-name="{{ current_user.emergency_contact.name if (current_user and current_user.emergency_contact) else '' }}"
+      data-emergency-phone="{{ current_user.emergency_contact.phone if (current_user and current_user.emergency_contact) else '' }}"
       data-audio-enabled="{{ 'true' if (not current_user or current_user.preferences.audio_guidance_enabled) else 'false' }}">
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
-    <header class="site-header" role="banner">
-        <div class="container header-inner">
-            <a href="{{ url_for('web.dashboard') }}" class="brand" aria-label="GlidePath Home">
-                <span class="brand-icon" aria-hidden="true">♿</span>
+    <div class="phone-device-frame">
+        <!-- Mobile Status Bar -->
+        <div class="phone-status-bar" aria-hidden="true">
+            <span class="status-time">09:41</span>
+            <span class="status-notch"></span>
+            <span class="status-icons">GPS · 5G · 100%</span>
+        </div>
+
+        <!-- Sticky App Header -->
+        <header class="app-topbar" role="banner">
+            <a href="{{ url_for('web.dashboard') }}" class="brand" aria-label="AccessRail Home">
+                <span class="brand-icon" aria-hidden="true">🚆</span>
                 <div>
-                    <span class="brand-name">GlidePath</span>
-                    <span class="brand-tagline">Door-to-Door · Step-Free · No Ringing Ahead</span>
+                    <span class="brand-name">AccessRail</span>
+                    <span class="brand-tagline">Door-to-Door · Inclusive · Step-Free</span>
                 </div>
             </a>
 
-            <nav class="main-nav" aria-label="Primary Navigation">
-                <a href="{{ url_for('web.dashboard') }}" class="nav-link">Live GPS &amp; Trains</a>
+            <div class="topbar-right">
                 {% if current_user %}
-                    <a href="{{ url_for('web.profile') }}" class="nav-link nav-badge-link">
-                        Saved Profile: {{ current_user.full_name }}
-                    </a>
-                    <a href="{{ url_for('web.logout') }}" class="btn btn-outline btn-sm">Sign Out</a>
+                    <a href="{{ url_for('web.profile') }}" class="btn btn-secondary btn-xs">Prefs</a>
+                    <a href="{{ url_for('web.logout') }}" class="btn btn-outline btn-xs">Out</a>
                 {% else %}
-                    <a href="{{ url_for('web.login') }}" class="nav-link">Sign In</a>
-                    <a href="{{ url_for('web.register') }}" class="btn btn-primary btn-sm">Register &amp; Save Preferences</a>
+                    <a href="{{ url_for('web.login') }}" class="btn btn-secondary btn-xs">Login</a>
+                    <a href="{{ url_for('web.register') }}" class="btn btn-primary btn-xs">Register</a>
                 {% endif %}
-            </nav>
-        </div>
-    </header>
+            </div>
+        </header>
 
-    <div class="container flash-container" role="status" aria-live="polite">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category }}">
-                        <span>{{ message }}</span>
-                    </div>
-                {% endfor %}
+        <!-- Flash Notifications -->
+        <div class="flash-container" role="status" aria-live="polite">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">
+                            <span>{{ message }}</span>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <!-- Scrollable Mobile App Screen -->
+        <main id="main-content" class="mobile-screen-content">
+            {% block content %}{% endblock %}
+        </main>
+
+        <!-- Bottom Mobile Navigation Bar -->
+        <nav class="mobile-tab-bar" aria-label="Mobile App Navigation">
+            <a href="{{ url_for('web.dashboard') }}#booking-section" class="tab-item">
+                <span class="tab-icon" aria-hidden="true">🎫</span>
+                <span class="tab-label">Book</span>
+            </a>
+            <a href="{{ url_for('web.dashboard') }}#travel-section" class="tab-item">
+                <span class="tab-icon" aria-hidden="true">🚆</span>
+                <span class="tab-label">Travel</span>
+            </a>
+            <a href="{{ url_for('web.dashboard') }}#arrival-section" class="tab-item">
+                <span class="tab-icon" aria-hidden="true">🏁</span>
+                <span class="tab-label">Arrival</span>
+            </a>
+            <a href="{{ url_for('web.dashboard') }}#gps-radar-section" class="tab-item">
+                <span class="tab-icon" aria-hidden="true">📡</span>
+                <span class="tab-label">GPS Map</span>
+            </a>
+            {% if current_user %}
+                <a href="{{ url_for('web.profile') }}" class="tab-item tab-active-user">
+                    <span class="tab-icon" aria-hidden="true">👤</span>
+                    <span class="tab-label">Profile</span>
+                </a>
+            {% else %}
+                <a href="{{ url_for('web.login') }}" class="tab-item">
+                    <span class="tab-icon" aria-hidden="true">🔑</span>
+                    <span class="tab-label">Login</span>
+                </a>
             {% endif %}
-        {% endwith %}
+        </nav>
     </div>
 
-    <main id="main-content" class="container main-content">
-        {% block content %}{% endblock %}
-    </main>
-
-    <footer class="site-footer">
-        <div class="container footer-inner">
-            <p><strong>GlidePath Manchester</strong> — Built for independent, spontaneous step-free rail journeys.</p>
-            <p class="muted">Live GPS Telemetry · Saved Host Wheelchair Preferences · Audio &amp; Visual Guidance</p>
-        </div>
-    </footer>
-
-    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js', v='3') }}"></script>
 </body>
 </html>
-

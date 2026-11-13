@@ -1,15 +1,15 @@
-"""AuthService managing user registration, authentication, and saved preferences."""
+"""AuthService managing inclusive registration, emergency contacts, and preferences."""
 
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from app.models.user import AccessibilityPreferences, User
+from app.models.user import AccessibilityPreferences, EmergencyContact, User
 from app.repositories.user_repository import UserRepository
 
 
 class AuthService:
-    """Application service handling account lifecycle and persistent preferences."""
+    """Application service handling account lifecycle, emergency contacts, and preferences."""
 
     def __init__(self, user_repository: UserRepository) -> None:
         self.user_repository = user_repository
@@ -22,31 +22,32 @@ class AuthService:
         home_address: str,
         postcode: str,
         preferences_payload: Dict[str, Any],
+        emergency_contact_payload: Optional[Dict[str, Any]] = None,
     ) -> User:
-        """Validate inputs, save wheelchair preferences once, and create account."""
         if not full_name or not full_name.strip():
             raise ValueError("Full name is required.")
         if not email or "@" not in email:
             raise ValueError("A valid email address is required.")
         if not home_address or not home_address.strip():
-            raise ValueError("Home address is required for door-to-door step-free routing.")
+            raise ValueError("Home address is required for door-to-door routing.")
 
         if self.user_repository.find_by_email(email) is not None:
             raise ValueError("An account with this email address already exists.")
 
         preferences = AccessibilityPreferences.from_dict(preferences_payload)
+        emergency_contact = EmergencyContact.from_dict(emergency_contact_payload)
         new_user = User(
             full_name=full_name,
             email=email,
             home_address=home_address,
-            postcode=postcode or "M15 4FN",
+            postcode=postcode or "M21 0UF",
             preferences=preferences,
+            emergency_contact=emergency_contact,
         )
         new_user.set_password(password)
         return self.user_repository.create(new_user)
 
     def authenticate(self, email: str, password: str) -> Optional[User]:
-        """Return User if credentials match, otherwise None."""
         if not email or not password:
             return None
         user = self.user_repository.find_by_email(email)
@@ -55,7 +56,6 @@ class AuthService:
         return None
 
     def get_user_by_id(self, user_id: Optional[int]) -> Optional[User]:
-        """Retrieve currently logged-in user by session ID."""
         if user_id is None:
             return None
         return self.user_repository.find_by_id(user_id)
@@ -66,8 +66,8 @@ class AuthService:
         home_address: Optional[str],
         postcode: Optional[str],
         preferences_payload: Dict[str, Any],
+        emergency_contact_payload: Optional[Dict[str, Any]] = None,
     ) -> User:
-        """Persist updated address and wheelchair/host preferences for future trips."""
         user = self.user_repository.find_by_id(user_id)
         if user is None:
             raise ValueError("User account not found.")
@@ -77,5 +77,10 @@ class AuthService:
 
         updated_prefs = AccessibilityPreferences.from_dict(preferences_payload)
         user.update_preferences(updated_prefs)
-        return self.user_repository.save_profile_and_preferences(user)
 
+        if emergency_contact_payload is not None:
+            user.update_emergency_contact(
+                EmergencyContact.from_dict(emergency_contact_payload)
+            )
+
+        return self.user_repository.save_profile_and_preferences(user)

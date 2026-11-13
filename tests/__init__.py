@@ -1,2 +1,2 @@
-"""Automated test suite package for GlidePath."""
+"""Automated test suite package for AccessRail."""
 

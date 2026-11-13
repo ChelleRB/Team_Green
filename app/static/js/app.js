@@ -1,8 +1,9 @@
 /**
- * GlidePath Frontend OOP Controllers
- * - AudioVisualGuide: Web Speech API + high-contrast live status announcements
- * - LiveGPSMapRenderer: Projects WGS84 Manchester lat/lon onto interactive SVG radar
- * - GlidePathDashboardController: Polls /api/trains/live, manages 1-click host alerts & routing
+ * AccessRail Mobile OOP Controllers
+ * - AudioVisualGuide: Spoken & visual live announcements
+ * - LiveGPSMapRenderer: Clean non-overlapping schematic-GPS mobile radar
+ * - AccessRailMobileApp: Orchestrates Door-to-Door Booking, Live Travel Checkpoints,
+ *   Accessible Coaches, Arrival Ramp & Coach-Fullness Alerts, and Live GPS Radar.
  */
 
 class AudioVisualGuide {
@@ -18,15 +19,15 @@ class AudioVisualGuide {
         this.updateToggleUI();
         this.announce(
             this.enabled
-                ? "Audio guidance enabled."
-                : "Audio guidance muted. Visual guidance remains active.",
+                ? "Spoken audio guidance enabled."
+                : "Audio muted. Visual alerts remain active.",
             true
         );
     }
 
     updateToggleUI() {
         if (this.audioLabelEl) {
-            this.audioLabelEl.textContent = this.enabled ? "ON" : "MUTED";
+            this.audioLabelEl.textContent = this.enabled ? "ON" : "OFF";
         }
     }
 
@@ -55,32 +56,6 @@ class LiveGPSMapRenderer {
         this.stationsLayer = document.getElementById("map-stations-layer");
         this.userLayer = document.getElementById("map-user-gps-layer");
         this.trainsLayer = document.getElementById("map-trains-layer");
-
-        // Greater Manchester bounding box for WGS84 projection
-        this.bounds = {
-            minLat: 53.402,
-            maxLat: 53.496,
-            minLon: -2.288,
-            maxLon: -2.210,
-        };
-        this.width = 720;
-        this.height = 420;
-        this.padding = 48;
-    }
-
-    project(latitude, longitude) {
-        const xRatio =
-            (longitude - this.bounds.minLon) /
-            (this.bounds.maxLon - this.bounds.minLon);
-        const yRatio =
-            (latitude - this.bounds.minLat) /
-            (this.bounds.maxLat - this.bounds.minLat);
-
-        const x = this.padding + xRatio * (this.width - this.padding * 2);
-        const y =
-            this.height -
-            (this.padding + yRatio * (this.height - this.padding * 2));
-        return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 };
     }
 
     render(snapshot, userGps, onStationSelect) {
@@ -91,19 +66,13 @@ class LiveGPSMapRenderer {
             stationById[st.station_id] = st;
         });
 
-        // 1. Render rail corridors
+        // 1. Render rail lines using well-spaced schematic coordinates
         this.corridorsLayer.innerHTML = "";
         snapshot.trains.forEach((train) => {
             const pts = train.route_station_ids
                 .map((id) => stationById[id])
                 .filter(Boolean)
-                .map((st) => {
-                    const p = this.project(
-                        st.coordinates.latitude,
-                        st.coordinates.longitude
-                    );
-                    return `${p.x},${p.y}`;
-                })
+                .map((st) => `${st.schematic_x},${st.schematic_y}`)
                 .join(" ");
 
             const polyline = document.createElementNS(
@@ -112,21 +81,17 @@ class LiveGPSMapRenderer {
             );
             polyline.setAttribute("points", pts);
             polyline.setAttribute("fill", "none");
-            polyline.setAttribute("stroke", train.line_color || "#80ef80");
-            polyline.setAttribute("stroke-width", "4");
-            polyline.setAttribute("stroke-opacity", "0.35");
+            polyline.setAttribute("stroke", train.line_color || "#8462dc");
+            polyline.setAttribute("stroke-width", "3.5");
+            polyline.setAttribute("stroke-opacity", "0.4");
             polyline.setAttribute("stroke-linecap", "round");
             polyline.setAttribute("stroke-linejoin", "round");
             this.corridorsLayer.appendChild(polyline);
         });
 
-        // 2. Render stations
+        // 2. Render stations with clear non-overlapping labels
         this.stationsLayer.innerHTML = "";
         snapshot.stations.forEach((st) => {
-            const pos = this.project(
-                st.coordinates.latitude,
-                st.coordinates.longitude
-            );
             const group = document.createElementNS(
                 "http://www.w3.org/2000/svg",
                 "g"
@@ -135,18 +100,18 @@ class LiveGPSMapRenderer {
             group.addEventListener("click", () => onStationSelect(st.station_id));
 
             const isSelected = st.station_id === snapshot.selected_station_id;
-            const fill = st.is_step_free_trusted ? "#80ef80" : "#ffb347";
+            const fill = st.is_step_free_trusted ? "#34c778" : "#f09c38";
 
             if (isSelected) {
                 const halo = document.createElementNS(
                     "http://www.w3.org/2000/svg",
                     "circle"
                 );
-                halo.setAttribute("cx", pos.x);
-                halo.setAttribute("cy", pos.y);
-                halo.setAttribute("r", "15");
-                halo.setAttribute("fill", "rgba(128, 239, 128, 0.22)");
-                halo.setAttribute("stroke", "#80ef80");
+                halo.setAttribute("cx", st.schematic_x);
+                halo.setAttribute("cy", st.schematic_y);
+                halo.setAttribute("r", "12");
+                halo.setAttribute("fill", "rgba(52, 199, 120, 0.22)");
+                halo.setAttribute("stroke", "#239459");
                 halo.setAttribute("stroke-width", "1.5");
                 group.appendChild(halo);
             }
@@ -155,11 +120,11 @@ class LiveGPSMapRenderer {
                 "http://www.w3.org/2000/svg",
                 "circle"
             );
-            circle.setAttribute("cx", pos.x);
-            circle.setAttribute("cy", pos.y);
-            circle.setAttribute("r", isSelected ? "8" : "6.5");
+            circle.setAttribute("cx", st.schematic_x);
+            circle.setAttribute("cy", st.schematic_y);
+            circle.setAttribute("r", isSelected ? "6.5" : "5.5");
             circle.setAttribute("fill", fill);
-            circle.setAttribute("stroke", "#141815");
+            circle.setAttribute("stroke", "#ffffff");
             circle.setAttribute("stroke-width", "2");
             group.appendChild(circle);
 
@@ -167,59 +132,62 @@ class LiveGPSMapRenderer {
                 "http://www.w3.org/2000/svg",
                 "text"
             );
-            const offsetX = st.station_id === "OXFD" ? -12 : 12;
-            const offsetY = st.station_id === "STPS" ? -10 : 5;
-            label.setAttribute("x", pos.x + offsetX);
-            label.setAttribute("y", pos.y + offsetY);
-            if (st.station_id === "OXFD") {
+            const shortName = st.name.replace("Manchester ", "");
+            const alignEnd = st.schematic_x > 250;
+            label.setAttribute("x", st.schematic_x + (alignEnd ? -10 : 10));
+            label.setAttribute("y", st.schematic_y + 4);
+            if (alignEnd) {
                 label.setAttribute("text-anchor", "end");
             }
-            label.setAttribute("fill", isSelected ? "#ffffff" : "#d5dad2");
-            label.setAttribute("font-size", isSelected ? "13" : "11.5");
+            label.setAttribute("fill", isSelected ? "#2c1f4a" : "#564778");
+            label.setAttribute("font-size", isSelected ? "10" : "9.2");
             label.setAttribute("font-weight", isSelected ? "800" : "600");
-            label.textContent = st.name;
+            label.textContent = shortName;
             group.appendChild(label);
 
             this.stationsLayer.appendChild(group);
         });
 
-        // 3. Render user's live GPS pin if active
+        // 3. Render user GPS marker near nearest station if active
         this.userLayer.innerHTML = "";
-        if (userGps) {
-            const upos = this.project(userGps.lat, userGps.lon);
-            const pin = document.createElementNS(
-                "http://www.w3.org/2000/svg",
-                "circle"
-            );
-            pin.setAttribute("cx", upos.x);
-            pin.setAttribute("cy", upos.y);
-            pin.setAttribute("r", "9");
-            pin.setAttribute("fill", "#ffffff");
-            pin.setAttribute("stroke", "#80ef80");
-            pin.setAttribute("stroke-width", "3");
-            this.userLayer.appendChild(pin);
+        if (userGps && snapshot.nearest_to_user) {
+            const nearSt =
+                stationById[snapshot.nearest_to_user.nearest_station_id];
+            if (nearSt) {
+                const ux = Math.max(24, nearSt.schematic_x - 24);
+                const uy = Math.min(245, nearSt.schematic_y + 20);
+                const pin = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "circle"
+                );
+                pin.setAttribute("cx", ux);
+                pin.setAttribute("cy", uy);
+                pin.setAttribute("r", "6.5");
+                pin.setAttribute("fill", "#239459");
+                pin.setAttribute("stroke", "#ffffff");
+                pin.setAttribute("stroke-width", "2");
+                this.userLayer.appendChild(pin);
 
-            const utext = document.createElementNS(
-                "http://www.w3.org/2000/svg",
-                "text"
-            );
-            utext.setAttribute("x", upos.x);
-            utext.setAttribute("y", upos.y - 14);
-            utext.setAttribute("text-anchor", "middle");
-            utext.setAttribute("fill", "#80ef80");
-            utext.setAttribute("font-size", "11");
-            utext.setAttribute("font-weight", "800");
-            utext.textContent = "YOU (GPS)";
-            this.userLayer.appendChild(utext);
+                const utext = document.createElementNS(
+                    "http://www.w3.org/2000/svg",
+                    "text"
+                );
+                utext.setAttribute("x", ux);
+                utext.setAttribute("y", uy + 14);
+                utext.setAttribute("text-anchor", "middle");
+                utext.setAttribute("fill", "#135934");
+                utext.setAttribute("font-size", "8.5");
+                utext.setAttribute("font-weight", "800");
+                utext.textContent = "YOU (GPS)";
+                this.userLayer.appendChild(utext);
+            }
         }
 
-        // 4. Render live moving GPS trains
+        // 4. Render moving trains with slight vertical stagger if sharing segment
         this.trainsLayer.innerHTML = "";
-        snapshot.trains.forEach((train) => {
-            const tpos = this.project(
-                train.coordinates.latitude,
-                train.coordinates.longitude
-            );
+        snapshot.trains.forEach((train, idx) => {
+            const tx = train.schematic_x;
+            const ty = train.schematic_y + (idx % 2 === 0 ? -9 : 9);
             const g = document.createElementNS(
                 "http://www.w3.org/2000/svg",
                 "g"
@@ -229,25 +197,25 @@ class LiveGPSMapRenderer {
                 "http://www.w3.org/2000/svg",
                 "rect"
             );
-            badgeBg.setAttribute("x", tpos.x - 28);
-            badgeBg.setAttribute("y", tpos.y - 12);
-            badgeBg.setAttribute("width", "56");
-            badgeBg.setAttribute("height", "24");
-            badgeBg.setAttribute("rx", "7");
-            badgeBg.setAttribute("fill", "#1a242b");
-            badgeBg.setAttribute("stroke", train.line_color || "#56c8ff");
-            badgeBg.setAttribute("stroke-width", "2");
+            badgeBg.setAttribute("x", tx - 21);
+            badgeBg.setAttribute("y", ty - 9);
+            badgeBg.setAttribute("width", "42");
+            badgeBg.setAttribute("height", "18");
+            badgeBg.setAttribute("rx", "6");
+            badgeBg.setAttribute("fill", "#704cc9");
+            badgeBg.setAttribute("stroke", "#ffffff");
+            badgeBg.setAttribute("stroke-width", "1.5");
             g.appendChild(badgeBg);
 
             const label = document.createElementNS(
                 "http://www.w3.org/2000/svg",
                 "text"
             );
-            label.setAttribute("x", tpos.x);
-            label.setAttribute("y", tpos.y + 4);
+            label.setAttribute("x", tx);
+            label.setAttribute("y", ty + 3);
             label.setAttribute("text-anchor", "middle");
             label.setAttribute("fill", "#ffffff");
-            label.setAttribute("font-size", "10.5");
+            label.setAttribute("font-size", "8.2");
             label.setAttribute("font-weight", "800");
             label.textContent = train.train_id;
             g.appendChild(label);
@@ -257,30 +225,35 @@ class LiveGPSMapRenderer {
     }
 }
 
-class GlidePathDashboardController {
+class AccessRailMobileApp {
     constructor() {
-        const audioDefault =
-            document.body.dataset.audioEnabled !== "false";
-        this.isAuthenticated =
-            document.body.dataset.authenticated === "true";
+        const audioDefault = document.body.dataset.audioEnabled !== "false";
+        this.isAuthenticated = document.body.dataset.authenticated === "true";
+        this.defaultUserName =
+            document.body.dataset.userName || "Maya Okafor (Guest)";
+        this.emergencyName = document.body.dataset.emergencyName || "";
+        this.emergencyPhone = document.body.dataset.emergencyPhone || "";
+
         this.guide = new AudioVisualGuide(audioDefault);
         this.mapRenderer = new LiveGPSMapRenderer(
             document.getElementById("manchester-gps-map")
         );
 
         this.stationSelect = document.getElementById("station-select");
+        this.activeTrainSelect = document.getElementById("active-train-select");
+        this.arrivalStationSelect = document.getElementById(
+            "arrival-station-select"
+        );
         this.trainsListEl = document.getElementById("trains-live-list");
+
         this.userGps = null;
         this.latestSnapshot = null;
-        this.pollTimer = null;
+        this.latestPlan = null;
 
         this.bindEvents();
         if (this.stationSelect) {
             this.fetchLiveTrains();
-            this.pollTimer = window.setInterval(
-                () => this.fetchLiveTrains(),
-                2500
-            );
+            window.setInterval(() => this.fetchLiveTrains(), 2500);
         }
     }
 
@@ -293,7 +266,7 @@ class GlidePathDashboardController {
         const announceBtn = document.getElementById("announce-next-btn");
         if (announceBtn) {
             announceBtn.addEventListener("click", () =>
-                this.announceNextStepFreeTrain()
+                this.announceLiveTravelUpdate()
             );
         }
 
@@ -303,8 +276,16 @@ class GlidePathDashboardController {
         }
 
         if (this.stationSelect) {
-            this.stationSelect.addEventListener("change", () => {
-                this.fetchLiveTrains();
+            this.stationSelect.addEventListener("change", () =>
+                this.fetchLiveTrains()
+            );
+        }
+
+        if (this.activeTrainSelect) {
+            this.activeTrainSelect.addEventListener("change", () => {
+                if (this.latestSnapshot) {
+                    this.renderTravelAndArrivalSections(this.latestSnapshot);
+                }
             });
         }
 
@@ -314,6 +295,48 @@ class GlidePathDashboardController {
                 e.preventDefault();
                 this.submitJourneyPlan();
             });
+        }
+
+        const boardingRampBtn = document.getElementById(
+            "notify-boarding-ramp-btn"
+        );
+        if (boardingRampBtn) {
+            boardingRampBtn.addEventListener("click", () => {
+                const trainId = this.activeTrainSelect
+                    ? this.activeTrainSelect.value
+                    : "TR-101";
+                const originId =
+                    document.getElementById("origin-station")?.value || "CHOR";
+                this.sendCrewAndRampNotification(
+                    trainId,
+                    originId,
+                    "ramp_deployment"
+                );
+            });
+        }
+
+        const arrivalRampBtn = document.getElementById(
+            "notify-arrival-ramp-btn"
+        );
+        if (arrivalRampBtn) {
+            arrivalRampBtn.addEventListener("click", () => {
+                const trainId = this.activeTrainSelect
+                    ? this.activeTrainSelect.value
+                    : "TR-101";
+                const destId = this.arrivalStationSelect
+                    ? this.arrivalStationSelect.value
+                    : "STPS";
+                this.sendCrewAndRampNotification(trainId, destId, "arrival");
+            });
+        }
+
+        const emergencyShareBtn = document.getElementById(
+            "share-emergency-arrival-btn"
+        );
+        if (emergencyShareBtn) {
+            emergencyShareBtn.addEventListener("click", () =>
+                this.shareArrivalWithEmergencyContact()
+            );
         }
 
         document.querySelectorAll(".report-facility-btn").forEach((btn) => {
@@ -331,28 +354,26 @@ class GlidePathDashboardController {
         const applyCoords = (lat, lon, label) => {
             this.userGps = { lat, lon };
             if (readout) {
-                readout.textContent = `${label}: ${lat.toFixed(4)}°N, ${Math.abs(lon).toFixed(4)}°W`;
+                readout.textContent = `${label}: ${lat.toFixed(3)}°N, ${Math.abs(
+                    lon
+                ).toFixed(3)}°W`;
             }
             this.fetchLiveTrains(true);
         };
 
         if ("geolocation" in navigator) {
             navigator.geolocation.getCurrentPosition(
-                (pos) => {
+                (pos) =>
                     applyCoords(
                         pos.coords.latitude,
                         pos.coords.longitude,
                         "Live GPS"
-                    );
-                },
-                () => {
-                    // Fallback to Maya's Chorlton Manchester GPS coordinates in restricted sandboxes
-                    applyCoords(53.4418, -2.2752, "Manchester Home GPS");
-                },
+                    ),
+                () => applyCoords(53.4418, -2.2752, "Chorlton GPS"),
                 { timeout: 3500 }
             );
         } else {
-            applyCoords(53.4418, -2.2752, "Manchester Home GPS");
+            applyCoords(53.4418, -2.2752, "Chorlton GPS");
         }
     }
 
@@ -377,25 +398,13 @@ class GlidePathDashboardController {
             });
             this.renderStationHeader(snapshot.selected_station);
             this.renderArrivalsBoard(snapshot.trains, snapshot.selected_station);
-
-            const nextServing = snapshot.trains.find(
-                (t) => t.serves_selected_station
-            );
-            if (nextServing) {
-                const etaLabel =
-                    nextServing.eta_selected_seconds === 0
-                        ? "at platform now"
-                        : `in ${nextServing.eta_selected_minutes} min (${nextServing.eta_selected_seconds}s)`;
-                this.guide.setBanner(
-                    `Live GPS: ${nextServing.train_id} to ${nextServing.headsign} arriving at ${snapshot.selected_station.name} ${etaLabel} · ${nextServing.accessible_carriage}.`
-                );
-            }
+            this.renderTravelAndArrivalSections(snapshot);
 
             if (announceNearest && snapshot.nearest_to_user) {
                 const near = snapshot.nearest_to_user;
                 this.stationSelect.value = near.recommended_step_free_station_id;
                 this.guide.announce(
-                    `GPS locked. Nearest verified step-free station is ${near.recommended_step_free_station_name}, ${near.recommended_distance_km} kilometres away.`
+                    `GPS tracking active. Nearest step-free station is ${near.recommended_step_free_station_name}, ${near.recommended_distance_km} kilometres away.`
                 );
             }
         } catch (err) {
@@ -403,14 +412,117 @@ class GlidePathDashboardController {
         }
     }
 
+    renderTravelAndArrivalSections(snapshot) {
+        if (!this.activeTrainSelect) return;
+        const activeId = this.activeTrainSelect.value;
+        const train =
+            snapshot.trains.find((t) => t.train_id === activeId) ||
+            snapshot.trains[0];
+        if (!train) return;
+
+        // 1. Update live intermediate spot banner & GPS coords
+        const spotText = document.getElementById("travel-spot-text");
+        const gpsText = document.getElementById("travel-gps-coords");
+        if (spotText) {
+            spotText.textContent = `${train.train_id} → ${train.headsign}: ${train.status_text}`;
+        }
+        if (gpsText) {
+            gpsText.textContent = `📡 Live Train GPS: ${train.coordinates.latitude.toFixed(
+                4
+            )}°N, ${Math.abs(train.coordinates.longitude).toFixed(4)}°W · ${
+                train.speed_kmh
+            } km/h · Next: ${train.next_station_name} (${train.seconds_to_next_station}s)`;
+        }
+
+        this.guide.setBanner(
+            `${train.train_id}: ${train.status_text} · Accessible: ${train.accessible_coaches.join(
+                ", "
+            )}`
+        );
+
+        // 2. Render door-to-destination checkpoint timeline
+        const cpList = document.getElementById("travel-checkpoints-list");
+        const postcodeVal =
+            document.getElementById("origin-postcode")?.value || "M21 0UF";
+        if (cpList && train.journey_checkpoints) {
+            const houseStep = `<li class="cp-passed">
+                <span>🏠 House Origin (${postcodeVal})</span>
+                <span class="pill pill-purple">Door Commute</span>
+            </li>`;
+            const railSteps = train.journey_checkpoints
+                .map((cp) => {
+                    const cls =
+                        cp.state === "current"
+                            ? "cp-current"
+                            : cp.state === "passed"
+                            ? "cp-passed"
+                            : "";
+                    const badge =
+                        cp.state === "current"
+                            ? `<span class="pill pill-green">● Live Spot</span>`
+                            : cp.state === "passed"
+                            ? `<span class="pill pill-purple">✓ Passed</span>`
+                            : `<span class="pill ${
+                                  cp.lift_ok ? "pill-green" : "pill-amber"
+                              }">${cp.lift_ok ? "Upcoming · Lift OK" : "⚠ Lift Out"}</span>`;
+                    return `<li class="${cls}">
+                        <span>🚉 ${cp.station_name}</span>
+                        ${badge}
+                    </li>`;
+                })
+                .join("");
+            cpList.innerHTML = houseStep + railSteps;
+        }
+
+        // 3. Render Coach-by-Coach Wheelchair Accessibility & Capacity
+        const coachesGrid = document.getElementById("coaches-accessibility-grid");
+        if (coachesGrid && train.coaches) {
+            coachesGrid.innerHTML = train.coaches
+                .map((c) => {
+                    const cardCls = c.is_too_full
+                        ? "coach-card coach-full"
+                        : c.is_wheelchair_accessible
+                        ? "coach-card coach-accessible"
+                        : "coach-card";
+                    const badge = c.is_too_full
+                        ? `<span class="pill pill-danger">⚠ TOO FULL (${c.occupancy_percent}%)</span>`
+                        : c.is_wheelchair_accessible
+                        ? `<span class="pill pill-green">♿ Accessible (${c.wheelchair_bays_free}/${c.wheelchair_bays_total} Free)</span>`
+                        : `<span class="pill pill-purple">Standard (${c.occupancy_percent}%)</span>`;
+                    return `<div class="${cardCls}">
+                        <div class="coach-card-top">
+                            <strong>${c.coach_id}</strong>
+                            ${badge}
+                        </div>
+                        <div class="small-note">${c.features_label}</div>
+                    </div>`;
+                })
+                .join("");
+        }
+
+        // 4. Update Arrival Section Coach-Too-Full Alert
+        const crowdingEl = document.getElementById("arrival-crowding-alert");
+        if (crowdingEl) {
+            if (train.any_coach_too_full) {
+                crowdingEl.className = "crowding-alert-box";
+                crowdingEl.textContent = `⚠ ${train.crowding_alert}`;
+            } else {
+                crowdingEl.className = "crowding-alert-box crowding-clear";
+                crowdingEl.textContent = `✓ ${train.crowding_alert}`;
+            }
+        }
+    }
+
     renderStationHeader(station) {
         const heading = document.getElementById("selected-station-heading");
         const note = document.getElementById("selected-station-note");
         const badge = document.getElementById("selected-station-badge");
-        if (heading) heading.textContent = `${station.name} — Live Arrivals`;
+        if (heading) heading.textContent = `${station.name} Arrivals`;
         if (note) note.textContent = station.accessibility_note;
         if (badge) {
-            badge.textContent = station.trust_badge;
+            badge.textContent = station.is_step_free_trusted
+                ? "✓ Step-Free"
+                : "⚠ Lift Out";
             badge.className = `pill ${
                 station.is_step_free_trusted ? "pill-green" : "pill-amber"
             }`;
@@ -425,12 +537,8 @@ class GlidePathDashboardController {
                 const etaDisplay = train.serves_selected_station
                     ? train.eta_selected_seconds === 0
                         ? "AT PLATFORM"
-                        : `${train.eta_selected_minutes} min (${train.eta_selected_seconds}s)`
-                    : `Next stop: ${train.eta_next_minutes} min`;
-
-                const stepBadge = train.has_level_boarding
-                    ? `<span class="pill pill-green">✓ Step-Free Level Boarding</span>`
-                    : `<span class="pill pill-amber">⚠ Auto-Ramp via Host</span>`;
+                        : `${train.eta_selected_minutes} min`
+                    : `Next: ${train.eta_next_minutes}m`;
 
                 return `
                 <article class="train-item ${
@@ -439,112 +547,64 @@ class GlidePathDashboardController {
                     <div class="train-top">
                         <div>
                             <strong>${train.train_id} → ${train.headsign}</strong>
-                            <div><small class="muted">${train.line_name}</small></div>
+                            <div class="small-note">Accessible: ${train.accessible_coaches.join(
+                                ", "
+                            )}</div>
                         </div>
                         <span class="train-eta">${etaDisplay}</span>
                     </div>
                     <div class="train-meta">
-                        <div>${stepBadge} <span class="pill pill-dark">♿ ${
-                    train.wheelchair_bays_free
-                }/${train.wheelchair_bays_total} Bays Free</span></div>
-                        <div><strong>Zone:</strong> ${train.accessible_carriage}</div>
-                        <div><strong>Status:</strong> ${train.status_text}</div>
+                        <div>${train.status_text}</div>
                         <div class="train-gps-coord">
-                            📡 GPS: ${train.coordinates.latitude.toFixed(5)}°N, ${Math.abs(
+                            📡 ${train.coordinates.latitude.toFixed(
+                                4
+                            )}°N, ${Math.abs(
                     train.coordinates.longitude
-                ).toFixed(5)}°W · Heading ${train.heading_deg}° · ${train.speed_kmh} km/h
+                ).toFixed(4)}°W
                         </div>
-                    </div>
-                    <div class="train-actions">
-                        <button type="button" class="btn btn-primary btn-xs notify-host-btn"
-                                data-train="${train.train_id}"
-                                data-station="${selectedStation.station_id}">
-                            ♿ Board &amp; Silent-Ping Host
-                        </button>
                     </div>
                 </article>`;
             })
             .join("");
-
-        this.trainsListEl
-            .querySelectorAll(".notify-host-btn")
-            .forEach((btn) => {
-                btn.addEventListener("click", () =>
-                    this.sendOneClickHostPing(
-                        btn.dataset.train,
-                        btn.dataset.station
-                    )
-                );
-            });
     }
 
-    announceNextStepFreeTrain() {
+    announceLiveTravelUpdate() {
         if (!this.latestSnapshot) return;
-        const station = this.latestSnapshot.selected_station;
-        const candidate = this.latestSnapshot.trains.find(
-            (t) => t.serves_selected_station && t.has_level_boarding
-        );
-        if (candidate) {
-            const etaText =
-                candidate.eta_selected_seconds === 0
-                    ? "is boarding right now"
-                    : `arrives in ${candidate.eta_selected_minutes} minutes`;
+        const activeId = this.activeTrainSelect?.value || "TR-101";
+        const train =
+            this.latestSnapshot.trains.find((t) => t.train_id === activeId) ||
+            this.latestSnapshot.trains[0];
+        if (train) {
             this.guide.announce(
-                `Next step-free train at ${station.name}: ${candidate.train_id} towards ${candidate.headsign} ${etaText}. Proceed to ${candidate.accessible_carriage}. ${candidate.wheelchair_bays_free} wheelchair bays are free.`,
+                `Live update for ${train.train_id}: ${train.status_text}. Wheelchair accessible coaches are ${train.accessible_coaches.join(
+                    " and "
+                )}. ${train.crowding_alert}`,
                 true
             );
-        } else {
-            this.guide.announce(
-                `No direct level-boarding train currently scheduled at ${station.name}. Check Deansgate or Piccadilly.`,
-                true
-            );
-        }
-    }
-
-    async sendOneClickHostPing(trainId, stationId) {
-        if (!this.isAuthenticated) {
-            this.guide.announce(
-                "Sign in as Maya Okafor or register once to save your wheelchair preferences for one-click host alerts.",
-                true
-            );
-            window.location.href = "/login";
-            return;
-        }
-
-        try {
-            const response = await fetch("/api/notify-host", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ train_id: trainId, station_id: stationId }),
-            });
-            const data = await response.json();
-            if (response.ok && data.notification) {
-                const n = data.notification;
-                this.guide.announce(
-                    `Host notified silently for train ${n.train_id} at ${n.station_name}. Your saved ${n.wheelchair_type} wheelchair preference and ${n.preferred_carriage} were sent automatically.`,
-                    true
-                );
-                const logEl = document.getElementById("host-notifications-log");
-                if (logEl) {
-                    const item = document.createElement("li");
-                    item.innerHTML = `<strong>${n.train_id} at ${n.station_name}</strong> — <span>${n.preferred_carriage}</span> <span class="pill pill-green">${n.status}</span>`;
-                    logEl.prepend(item);
-                }
-            }
-        } catch (err) {
-            console.error("Failed to notify host:", err);
         }
     }
 
     async submitJourneyPlan() {
+        const originPostcode =
+            document.getElementById("origin-postcode").value;
+        const originAddress = document.getElementById("origin-address").value;
+        const passengerCount = parseInt(
+            document.getElementById("passenger-count").value || "1",
+            10
+        );
         const originId = document.getElementById("origin-station").value;
-        const destinationId = document.getElementById("destination-station").value;
+        const destinationId = document.getElementById(
+            "destination-station"
+        ).value;
         const resultBox = document.getElementById("journey-plan-result");
 
         const response = await fetch("/api/journey/plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+                origin_postcode: originPostcode,
+                origin_address: originAddress,
+                passenger_count: passengerCount,
                 origin_station_id: originId,
                 destination_station_id: destinationId,
             }),
@@ -553,41 +613,261 @@ class GlidePathDashboardController {
         resultBox.classList.remove("hidden");
 
         if (!response.ok) {
-            resultBox.innerHTML = `<p><strong>⚠ ${data.error}</strong></p>`;
+            resultBox.innerHTML = `<div class="alert alert-error">⚠ ${data.error}</div>`;
             return;
         }
 
-        const warningsHtml =
-            data.warnings && data.warnings.length
-                ? `<div class="alert alert-error">${data.warnings.join("<br>")}</div>`
-                : `<div class="pill pill-green">✓ 100% Verified Step-Free Door-to-Door Route</div>`;
+        this.latestPlan = data;
+        if (this.arrivalStationSelect) {
+            this.arrivalStationSelect.value = destinationId;
+        }
 
-        const stepsHtml = data.steps
-            .map(
-                (s) =>
-                    `<li><strong>${s.title}:</strong> ${s.detail}</li>`
-            )
+        const commute = data.house_to_station_commute;
+        const optionsHtml = data.route_options
+            .map((opt, idx) => {
+                const liftBadge = opt.lift_flagged
+                    ? `<span class="pill pill-danger">⚠ ${opt.lift_flag_reason}</span>`
+                    : `<span class="pill pill-green">✓ All Lifts &amp; Step-Free OK</span>`;
+                return `
+                <label class="route-option-card ${
+                    opt.lift_flagged ? "route-flagged" : ""
+                }">
+                    <input type="radio" name="selected_route_option" value="${idx}" ${
+                    idx === 0 ? "checked" : ""
+                }>
+                    <div style="width:100%;">
+                        <div class="station-trust-title-row">
+                            <strong>${opt.route_label}</strong>
+                            <span class="pill pill-purple">£${opt.total_fare_gbp.toFixed(
+                                2
+                            )}</span>
+                        </div>
+                        <div class="timing-chips">
+                            <span class="time-chip-house">🏠 Leave House: ${
+                                opt.leave_house_time
+                            }</span>
+                            <span class="time-chip-train">🚆 Train ${
+                                opt.train_id
+                            }: ${opt.train_departure_time} → ${
+                    opt.estimated_arrival_time
+                }</span>
+                        </div>
+                        <div>${liftBadge}</div>
+                        <div class="small-note">Accessible: ${opt.accessible_coaches.join(
+                            ", "
+                        )} · Recommended: <strong>${opt.recommended_coach}</strong></div>
+                    </div>
+                </label>`;
+            })
             .join("");
 
-        const hostBanner = data.auto_host_notification
-            ? `<p class="small-note">📡 <strong>Auto-Host Alert Sent:</strong> ${data.auto_host_notification.status} (${data.auto_host_notification.preferred_carriage})</p>`
-            : "";
-
         resultBox.innerHTML = `
-            ${warningsHtml}
-            <ol class="journey-steps">${stepsHtml}</ol>
-            ${hostBanner}
+            <div class="commute-walk-box">
+                <strong>🏠 House-to-Station Commute (${commute.origin_postcode} → ${
+            commute.station_name
+        }):</strong><br>
+                ${commute.route_description}
+            </div>
+
+            <div>
+                <strong style="font-size:0.84rem;">Select Route Option:</strong>
+                <div class="route-options-list" style="margin-top:6px;">
+                    ${optionsHtml}
+                </div>
+            </div>
+
+            <div class="booking-checkout-panel">
+                <strong style="font-size:0.86rem;">Passenger &amp; Payment Checkout</strong>
+                <div class="form-group">
+                    <label for="booking-lead-name">Lead Passenger Name</label>
+                    <input type="text" id="booking-lead-name" class="form-control"
+                           value="${this.defaultUserName}">
+                </div>
+                <div class="form-group">
+                    <label for="booking-companions">Other Passengers / Companions (Optional)</label>
+                    <input type="text" id="booking-companions" class="form-control"
+                           placeholder="e.g. Samira Patel (Companion / Colleague)">
+                </div>
+                <div class="form-group">
+                    <label for="booking-payment-method">Payment Option</label>
+                    <select id="booking-payment-method" class="form-control">
+                        <option value="Apple Pay / Google Pay">Apple Pay / Google Pay (Instant)</option>
+                        <option value="Saved Debit Card •••• 4821">Saved Debit Card •••• 4821</option>
+                        <option value="Disabled Persons Railcard + Contactless">Disabled Persons Railcard + Contactless</option>
+                        <option value="Pay at Accessible Gate">Pay at Accessible Gate</option>
+                    </select>
+                </div>
+                <label class="preference-card-toggle" for="booking-ramp-check">
+                    <input type="checkbox" id="booking-ramp-check" checked>
+                    <div><strong>📐 Auto-notify train of boarding &amp; arrival ramp deployment</strong></div>
+                </label>
+                <button type="button" id="confirm-booking-btn" class="btn btn-green-solid full-width">
+                    Confirm Booking &amp; Send Ramp Alert
+                </button>
+            </div>
+        `;
+
+        document
+            .getElementById("confirm-booking-btn")
+            .addEventListener("click", () => this.confirmRouteBooking());
+
+        const best = data.route_options[0];
+        this.guide.announce(
+            `Routes found from postcode ${commute.origin_postcode}. Leave your house by ${best.leave_house_time} to catch train ${best.train_id} at ${best.train_departure_time}.`
+        );
+    }
+
+    async confirmRouteBooking() {
+        if (!this.latestPlan) return;
+        const selectedIdx = parseInt(
+            document.querySelector(
+                'input[name="selected_route_option"]:checked'
+            )?.value || "0",
+            10
+        );
+        const chosen = this.latestPlan.route_options[selectedIdx];
+        const passengerCount = parseInt(
+            document.getElementById("passenger-count").value || "1",
+            10
+        );
+
+        const response = await fetch("/api/bookings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                lead_passenger_name:
+                    document.getElementById("booking-lead-name").value,
+                passenger_count: passengerCount,
+                companion_names:
+                    document.getElementById("booking-companions").value,
+                origin_postcode:
+                    document.getElementById("origin-postcode").value,
+                origin_address: document.getElementById("origin-address").value,
+                origin_station_id: this.latestPlan.origin.station_id,
+                destination_station_id: this.latestPlan.destination.station_id,
+                train_id: chosen.train_id,
+                selected_coach: chosen.recommended_coach,
+                leave_house_time: chosen.leave_house_time,
+                train_departure_time: chosen.train_departure_time,
+                estimated_arrival_time: chosen.estimated_arrival_time,
+                payment_method: document.getElementById(
+                    "booking-payment-method"
+                ).value,
+                ramp_requested:
+                    document.getElementById("booking-ramp-check").checked,
+            }),
+        });
+        const resData = await response.json();
+        const ticketBox = document.getElementById("booking-confirmation-box");
+        ticketBox.classList.remove("hidden");
+
+        if (!response.ok) {
+            ticketBox.innerHTML = `<p>⚠ ${resData.error}</p>`;
+            return;
+        }
+
+        const b = resData.booking;
+        if (this.activeTrainSelect) {
+            this.activeTrainSelect.value = b.train_id;
+            if (this.latestSnapshot) {
+                this.renderTravelAndArrivalSections(this.latestSnapshot);
+            }
+        }
+
+        ticketBox.innerHTML = `
+            <div class="station-trust-title-row">
+                <strong>✅ E-Ticket Confirmed: ${b.booking_ref}</strong>
+                <span class="pill pill-purple">Paid £${b.total_price_gbp.toFixed(
+                    2
+                )}</span>
+            </div>
+            <p style="margin:6px 0;">
+                <strong>Passenger(s):</strong> ${b.lead_passenger_name} (${
+            b.passenger_count
+        } pax)${b.companion_names ? " + " + b.companion_names : ""}<br>
+                <strong>🏠 Leave House (${b.origin_postcode}):</strong> ${
+            b.leave_house_time
+        }<br>
+                <strong>🚆 Train ${b.train_id}:</strong> Departs ${
+            b.origin_station_name
+        } at ${b.train_departure_time} → Arrives ${
+            b.destination_station_name
+        } at ${b.estimated_arrival_time}<br>
+                <strong>♿ Assigned Accessible Coach:</strong> ${
+                    b.selected_coach
+                } · Payment: ${b.payment_method}
+            </p>
+            <span class="pill pill-green">✓ Boarding &amp; Arrival Ramp Deployment Notified</span>
         `;
 
         this.guide.announce(
-            `Step-free route ready from ${data.origin.name} to ${data.destination.name}. Board ${data.recommended_train.train_id}.`
+            `Booking ${b.booking_ref} confirmed! Leave house at ${b.leave_house_time} for train ${b.train_id} at ${b.train_departure_time}. Boarding and arrival ramp deployment notified.`,
+            true
         );
+    }
+
+    async sendCrewAndRampNotification(trainId, stationId, stage) {
+        const feedbackEl = document.getElementById("arrival-status-feedback");
+        if (!this.isAuthenticated) {
+            this.guide.announce(
+                "Sign in as Maya Okafor or register once to send saved-profile ramp deployment notifications.",
+                true
+            );
+            window.location.href = "/login";
+            return;
+        }
+
+        const response = await fetch("/api/notify-host", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                train_id: trainId,
+                station_id: stationId,
+                stage: stage,
+            }),
+        });
+        const data = await response.json();
+        if (response.ok && data.notification) {
+            const n = data.notification;
+            const msg = `${n.status} (${n.train_id} at ${n.station_name} · Recommended: ${data.recommended_coach}). ${data.crowding_alert}`;
+            if (feedbackEl) {
+                feedbackEl.classList.remove("hidden");
+                feedbackEl.textContent = `✓ ${msg}`;
+            }
+            this.guide.announce(msg, true);
+
+            const logEl = document.getElementById("host-notifications-log");
+            if (logEl) {
+                const item = document.createElement("li");
+                item.innerHTML = `<strong>${n.train_id} · ${n.station_name}</strong><div class="small-note">${n.message}</div><span class="pill pill-green">${n.status}</span>`;
+                logEl.prepend(item);
+            }
+        }
+    }
+
+    shareArrivalWithEmergencyContact() {
+        const feedbackEl = document.getElementById("arrival-status-feedback");
+        const trainId = this.activeTrainSelect?.value || "TR-101";
+        const destText =
+            this.arrivalStationSelect?.options[
+                this.arrivalStationSelect.selectedIndex
+            ]?.text || "Destination";
+        const contactLabel = this.emergencyName
+            ? `${this.emergencyName} (${this.emergencyPhone})`
+            : "your saved Emergency Contact";
+
+        const text = `Live GPS location & arrival ETA on ${trainId} (${destText}) shared via SMS alert with ${contactLabel}.`;
+        if (feedbackEl) {
+            feedbackEl.classList.remove("hidden");
+            feedbackEl.textContent = `🆘 ${text}`;
+        }
+        this.guide.announce(text, true);
     }
 
     async submitFacilityReport(stationId, status) {
         const note =
             status === "out_of_service"
-                ? "ALERT: Lift reported out of service by commuter — route via step-free alternative."
+                ? "LIFT OUT OF SERVICE reported live — route flagged."
                 : "Lift verified back in service and step-free.";
         const response = await fetch("/api/facility/report", {
             method: "POST",
@@ -606,6 +886,5 @@ class GlidePathDashboardController {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    new GlidePathDashboardController();
+    new AccessRailMobileApp();
 });
-

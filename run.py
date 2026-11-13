@@ -1,4 +1,4 @@
-"""Entry point for running the GlidePath Step-Free Live Transit Flask application."""
+"""Entry point for running the AccessRail Step-Free Live Transit Flask application."""
 
 import os
 from app import create_app

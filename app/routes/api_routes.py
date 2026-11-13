@@ -1,4 +1,4 @@
-"""REST JSON API routes for real-time GPS train tracking, routing, and host alerts."""
+"""REST JSON API routes for live GPS tracking, route options, bookings, ramp deployment, and arrival alerts."""
 
 from __future__ import annotations
 
@@ -24,7 +24,6 @@ def create_api_blueprint() -> Blueprint:
 
     @api_bp.route("/trains/live", methods=["GET"])
     def live_trains():
-        """Return real-time GPS coordinates, bearings, ETAs, and accessibility bays."""
         station_id = request.args.get("station_id", "CHOR")
         user_lat_raw = request.args.get("lat")
         user_lon_raw = request.args.get("lon")
@@ -41,16 +40,18 @@ def create_api_blueprint() -> Blueprint:
 
     @api_bp.route("/stations", methods=["GET"])
     def stations():
-        """Return all stations with live lift/ramp reliability metadata."""
         station_dicts = [st.to_dict() for st in _container().gps_service.list_stations()]
         return jsonify({"stations": station_dicts}), 200
 
     @api_bp.route("/journey/plan", methods=["POST"])
     def plan_journey():
-        """Plan a spontaneous door-to-door step-free trip using saved preferences."""
+        """Plan door-to-door postcode-to-train route options with leave-house times & lift flags."""
         payload = request.get_json(silent=True) or {}
         origin_id = payload.get("origin_station_id", "")
         destination_id = payload.get("destination_station_id", "")
+        origin_postcode = payload.get("origin_postcode")
+        origin_address = payload.get("origin_address")
+        passenger_count = int(payload.get("passenger_count", 1) or 1)
         user = _current_user()
 
         try:
@@ -58,20 +59,50 @@ def create_api_blueprint() -> Blueprint:
                 origin_station_id=origin_id,
                 destination_station_id=destination_id,
                 user=user,
+                origin_postcode=origin_postcode,
+                origin_address=origin_address,
+                passenger_count=passenger_count,
             )
             return jsonify(plan), 200
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
+    @api_bp.route("/bookings", methods=["POST"])
+    def create_booking():
+        """Book a selected route option for Maya and/or other passengers with payment."""
+        payload = request.get_json(silent=True) or {}
+        user = _current_user()
+        try:
+            result = _container().journey_service.create_booking(
+                user=user,
+                lead_passenger_name=payload.get("lead_passenger_name", ""),
+                passenger_count=int(payload.get("passenger_count", 1) or 1),
+                companion_names=payload.get("companion_names", ""),
+                origin_postcode=payload.get("origin_postcode", ""),
+                origin_address=payload.get("origin_address", ""),
+                origin_station_id=payload.get("origin_station_id", "CHOR"),
+                destination_station_id=payload.get("destination_station_id", "STPS"),
+                train_id=payload.get("train_id", "TR-101"),
+                selected_coach=payload.get("selected_coach", "Coach B"),
+                leave_house_time=payload.get("leave_house_time", ""),
+                train_departure_time=payload.get("train_departure_time", ""),
+                estimated_arrival_time=payload.get("estimated_arrival_time", ""),
+                payment_method=payload.get("payment_method", "Apple Pay / Contactless"),
+                ramp_requested=bool(payload.get("ramp_requested", True)),
+            )
+            return jsonify(result), 201
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
     @api_bp.route("/notify-host", methods=["POST"])
     def notify_host():
-        """One-click silent host alert using the user's saved wheelchair preferences."""
+        """Silent crew & ramp deployment alert for boarding, travel, or arrival."""
         user = _current_user()
         if not user or not user.id:
             return (
                 jsonify(
                     {
-                        "error": "Please sign in or register once to save your wheelchair preferences for 1-click host alerts."
+                        "error": "Please sign in or register once to save your accessibility preferences for 1-tap crew & ramp alerts."
                     }
                 ),
                 401,
@@ -80,6 +111,7 @@ def create_api_blueprint() -> Blueprint:
         payload = request.get_json(silent=True) or {}
         train_id = payload.get("train_id", "")
         station_id = payload.get("station_id", "CHOR")
+        stage = payload.get("stage", "boarding")
         custom_note = payload.get("custom_note", "")
 
         if not train_id:
@@ -90,12 +122,34 @@ def create_api_blueprint() -> Blueprint:
             train_id=train_id,
             station_id=station_id,
             custom_note=custom_note,
+            stage=stage,
         )
-        return jsonify({"notification": notification.to_dict()}), 201
+
+        # Include live coach fullness alert for the train
+        snapshot = _container().gps_service.get_live_snapshot(selected_station_id=station_id)
+        train_state = next(
+            (t for t in snapshot["trains"] if t["train_id"] == train_id),
+            None,
+        )
+
+        return (
+            jsonify(
+                {
+                    "notification": notification.to_dict(),
+                    "crowding_alert": train_state["crowding_alert"] if train_state else "",
+                    "any_coach_too_full": (
+                        train_state["any_coach_too_full"] if train_state else False
+                    ),
+                    "recommended_coach": (
+                        train_state["recommended_coach"] if train_state else "Coach B"
+                    ),
+                }
+            ),
+            201,
+        )
 
     @api_bp.route("/preferences", methods=["GET", "PUT"])
     def user_preferences():
-        """Inspect or update the signed-in user's saved accessibility preferences."""
         user = _current_user()
         if not user or not user.id:
             return jsonify({"error": "Authentication required."}), 401
@@ -110,6 +164,7 @@ def create_api_blueprint() -> Blueprint:
                 home_address=payload.get("home_address"),
                 postcode=payload.get("postcode"),
                 preferences_payload=payload.get("preferences", payload),
+                emergency_contact_payload=payload.get("emergency_contact"),
             )
             return jsonify({"user": updated.to_public_dict()}), 200
         except ValueError as exc:
@@ -117,12 +172,11 @@ def create_api_blueprint() -> Blueprint:
 
     @api_bp.route("/facility/report", methods=["POST"])
     def report_facility():
-        """Submit live lift/ramp reliability feedback to help fellow wheelchair users."""
         payload = request.get_json(silent=True) or {}
         station_id = payload.get("station_id", "")
         facility_type = payload.get("facility_type", "lift")
         status = payload.get("status", "out_of_service")
-        note = payload.get("note", "Reported via GlidePath live status.")
+        note = payload.get("note", "Reported via AccessRail live status.")
         user = _current_user()
         reporter = user.full_name if user else "Commuter Report"
 
@@ -130,27 +184,34 @@ def create_api_blueprint() -> Blueprint:
             updated_station = _container().gps_service.update_station_facility(
                 station_id=station_id,
                 facility_type=facility_type,
-                status_str=status,
-                note=note,
-            )
-            report = _container().notification_repository.record_facility_report(
-                station_id=station_id,
-                reporter_name=reporter,
-                facility_type=facility_type,
                 status=status,
                 note=note,
             )
-            return (
-                jsonify(
-                    {
-                        "station": updated_station.to_dict(),
-                        "report": report,
-                    }
-                ),
-                201,
+        except TypeError:
+            updated_station = _container().gps_service.update_station_facility(
+                station_id=station_id,
+                facility_type=facility_type,
+                status_str=status,
+                note=note,
             )
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-    return api_bp
+        report = _container().notification_repository.record_facility_report(
+            station_id=station_id,
+            reporter_name=reporter,
+            facility_type=facility_type,
+            status=status,
+            note=note,
+        )
+        return (
+            jsonify(
+                {
+                    "station": updated_station.to_dict(),
+                    "report": report,
+                }
+            ),
+            201,
+        )
 
+    return api_bp

@@ -1,115 +1,180 @@
 {% extends "base.html" %}
-{% block title %}Saved Accessibility Preferences · GlidePath{% endblock %}
+{% block title %}Saved Accessibility &amp; Emergency Profile · AccessRail{% endblock %}
 
 {% block content %}
-<section class="dashboard-grid">
-    <div class="card">
-        <div class="pill-row">
-            <span class="pill pill-green">SAVED ACCESSIBILITY PASSPORT</span>
-        </div>
-        <h1>{{ user.full_name }}’s Saved Preferences</h1>
-        <p class="muted">
-            Account: <strong>{{ user.email }}</strong> · Update once below and GlidePath automatically applies these settings on every journey.
-        </p>
+<section class="card">
+    <div class="pill-row">
+        <span class="pill pill-green">✓ Saved Inclusive Passport</span>
+    </div>
+    <h1>{{ user.full_name }}’s Saved Profile</h1>
+    <p class="muted">
+        <strong>{{ user.email }}</strong> · Applied automatically to every booking, ramp request, and journey.
+    </p>
 
-        <form method="POST" action="{{ url_for('web.profile') }}" class="stack-form">
-            <div class="form-row-3-1">
+    <form method="POST" action="{{ url_for('web.profile') }}" class="stack-form">
+        <fieldset class="form-section">
+            <legend>Door-to-Door Origin &amp; Emergency Contact</legend>
+            <div class="form-group">
+                <label for="home_address">Saved Home Address</label>
+                <input type="text" id="home_address" name="home_address" class="form-control"
+                       value="{{ user.home_address }}" required>
+            </div>
+            <div class="form-group">
+                <label for="postcode">Saved Postcode</label>
+                <input type="text" id="postcode" name="postcode" class="form-control"
+                       value="{{ user.postcode }}" required>
+            </div>
+            <div class="form-group">
+                <label for="emergency_contact_name">Emergency Contact Name</label>
+                <input type="text" id="emergency_contact_name" name="emergency_contact_name"
+                       class="form-control" value="{{ user.emergency_contact.name }}">
+            </div>
+            <div class="two-col-mobile">
                 <div class="form-group">
-                    <label for="home_address">Saved Home Address</label>
-                    <input type="text" id="home_address" name="home_address" class="form-control"
-                           value="{{ user.home_address }}" required>
+                    <label for="emergency_contact_phone">Emergency Phone</label>
+                    <input type="tel" id="emergency_contact_phone" name="emergency_contact_phone"
+                           class="form-control" value="{{ user.emergency_contact.phone }}">
                 </div>
                 <div class="form-group">
-                    <label for="postcode">Postcode</label>
-                    <input type="text" id="postcode" name="postcode" class="form-control"
-                           value="{{ user.postcode }}" required>
+                    <label for="emergency_contact_relationship">Relationship</label>
+                    <input type="text" id="emergency_contact_relationship" name="emergency_contact_relationship"
+                           class="form-control" value="{{ user.emergency_contact.relationship }}">
                 </div>
             </div>
+        </fieldset>
+
+        <fieldset class="form-section highlight-fieldset">
+            <legend>One-Click Accessibility &amp; Host Preferences</legend>
 
             <label class="preference-card-toggle" for="is_wheelchair_user">
                 <input type="checkbox" id="is_wheelchair_user" name="is_wheelchair_user"
                        {% if user.preferences.is_wheelchair_user %}checked{% endif %}>
                 <div>
-                    <strong>♿ Let host know I am a wheelchair user</strong>
-                    <p class="small-note">{{ user.preferences.host_alert_summary }}</p>
+                    <strong>♿ Wheelchair / Step-Free Mobility User</strong>
                 </div>
             </label>
 
-            <div class="form-row-2">
-                <div class="form-group">
-                    <label for="wheelchair_type">Mobility Aid Type</label>
-                    <select id="wheelchair_type" name="wheelchair_type" class="form-control">
-                        <option value="power" {% if user.preferences.wheelchair_type == 'power' %}selected{% endif %}>Power Wheelchair</option>
-                        <option value="manual" {% if user.preferences.wheelchair_type == 'manual' %}selected{% endif %}>Manual Wheelchair</option>
-                        <option value="scooter" {% if user.preferences.wheelchair_type == 'scooter' %}selected{% endif %}>Mobility Scooter</option>
-                        <option value="none" {% if user.preferences.wheelchair_type == 'none' %}selected{% endif %}>None</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="preferred_carriage_zone">Preferred Boarding Zone</label>
-                    <input type="text" id="preferred_carriage_zone" name="preferred_carriage_zone"
-                           class="form-control" value="{{ user.preferences.preferred_carriage_zone }}">
-                </div>
+            <label class="preference-card-toggle">
+                <input type="checkbox" name="disability_categories" value="visual_impairment"
+                       {% if 'visual_impairment' in user.preferences.disability_categories %}checked{% endif %}>
+                <div><strong>👁️ Visual Impairment / Spoken Audio Guidance</strong></div>
+            </label>
+
+            <label class="preference-card-toggle">
+                <input type="checkbox" name="disability_categories" value="hearing_impairment"
+                       {% if 'hearing_impairment' in user.preferences.disability_categories %}checked{% endif %}>
+                <div><strong>🦻 Hearing Impairment / Visual Alerts</strong></div>
+            </label>
+
+            <label class="preference-card-toggle">
+                <input type="checkbox" name="disability_categories" value="neurodivergent"
+                       {% if 'neurodivergent' in user.preferences.disability_categories %}checked{% endif %}>
+                <div><strong>🌿 Neurodivergent / Quiet Coach</strong></div>
+            </label>
+
+            <label class="preference-card-toggle">
+                <input type="checkbox" name="disability_categories" value="hidden_disability"
+                       {% if 'hidden_disability' in user.preferences.disability_categories %}checked{% endif %}>
+                <div><strong>🌻 Hidden Disability / Extra Boarding Time</strong></div>
+            </label>
+
+            <label class="preference-card-toggle">
+                <input type="checkbox" name="disability_categories" value="elderly_reduced_mobility"
+                       {% if 'elderly_reduced_mobility' in user.preferences.disability_categories %}checked{% endif %}>
+                <div><strong>🦯 Reduced Mobility / Priority Seat</strong></div>
+            </label>
+
+            <div class="form-group">
+                <label for="wheelchair_type">Mobility Aid</label>
+                <select id="wheelchair_type" name="wheelchair_type" class="form-control">
+                    <option value="power" {% if user.preferences.wheelchair_type == 'power' %}selected{% endif %}>Power Wheelchair</option>
+                    <option value="manual" {% if user.preferences.wheelchair_type == 'manual' %}selected{% endif %}>Manual Wheelchair</option>
+                    <option value="scooter" {% if user.preferences.wheelchair_type == 'scooter' %}selected{% endif %}>Mobility Scooter</option>
+                    <option value="walker" {% if user.preferences.wheelchair_type == 'walker' %}selected{% endif %}>Walking Aid / Rollator</option>
+                    <option value="none" {% if user.preferences.wheelchair_type == 'none' %}selected{% endif %}>None</option>
+                </select>
             </div>
+
+            <div class="form-group">
+                <label for="preferred_carriage_zone">Preferred Boarding Zone</label>
+                <input type="text" id="preferred_carriage_zone" name="preferred_carriage_zone"
+                       class="form-control" value="{{ user.preferences.preferred_carriage_zone }}">
+            </div>
+
+            <label class="preference-card-toggle" for="requires_ramp_deployment">
+                <input type="checkbox" id="requires_ramp_deployment" name="requires_ramp_deployment"
+                       {% if user.preferences.requires_ramp_deployment %}checked{% endif %}>
+                <div><strong>📐 Request Boarding &amp; Arrival Ramp Deployment</strong></div>
+            </label>
 
             <label class="preference-card-toggle" for="notify_host_automatically">
                 <input type="checkbox" id="notify_host_automatically" name="notify_host_automatically"
                        {% if user.preferences.notify_host_automatically %}checked{% endif %}>
-                <div>
-                    <strong>📡 Auto-notify train &amp; station host silently (no phone call ahead)</strong>
-                </div>
+                <div><strong>📡 Auto-notify train &amp; station crew silently</strong></div>
             </label>
 
             <label class="preference-card-toggle" for="step_free_level_boarding_only">
                 <input type="checkbox" id="step_free_level_boarding_only" name="step_free_level_boarding_only"
                        {% if user.preferences.step_free_level_boarding_only %}checked{% endif %}>
-                <div>
-                    <strong>🛤️ Step-free level boarding only (avoid broken lifts &amp; manual ramps)</strong>
-                </div>
+                <div><strong>🛗 Avoid &amp; flag broken lifts</strong></div>
             </label>
 
-            <div class="form-row-2">
-                <label class="preference-card-toggle" for="audio_guidance_enabled">
-                    <input type="checkbox" id="audio_guidance_enabled" name="audio_guidance_enabled"
-                           {% if user.preferences.audio_guidance_enabled %}checked{% endif %}>
-                    <div><strong>🔊 Audio Guidance</strong></div>
-                </label>
-                <label class="preference-card-toggle" for="visual_guidance_high_contrast">
-                    <input type="checkbox" id="visual_guidance_high_contrast" name="visual_guidance_high_contrast"
-                           {% if user.preferences.visual_guidance_high_contrast %}checked{% endif %}>
-                    <div><strong>👁️ High-Contrast Visual Mode</strong></div>
-                </label>
-            </div>
+            <label class="preference-card-toggle" for="audio_guidance_enabled">
+                <input type="checkbox" id="audio_guidance_enabled" name="audio_guidance_enabled"
+                       {% if user.preferences.audio_guidance_enabled %}checked{% endif %}>
+                <div><strong>🔊 Spoken Audio Guidance</strong></div>
+            </label>
+
+            <label class="preference-card-toggle" for="visual_guidance_high_contrast">
+                <input type="checkbox" id="visual_guidance_high_contrast" name="visual_guidance_high_contrast"
+                       {% if user.preferences.visual_guidance_high_contrast %}checked{% endif %}>
+                <div><strong>👁️ Clear Visual Mode</strong></div>
+            </label>
 
             <div class="form-group">
-                <label for="assistance_notes">Standing Host Note</label>
+                <label for="assistance_notes">Standing Crew Note</label>
                 <input type="text" id="assistance_notes" name="assistance_notes" class="form-control"
                        value="{{ user.preferences.assistance_notes }}">
             </div>
+        </fieldset>
 
-            <button type="submit" class="btn btn-primary full-width">Update Saved Preferences</button>
-        </form>
-    </div>
+        <button type="submit" class="btn btn-primary full-width">Update Saved Profile</button>
+    </form>
+</section>
 
-    <div class="card">
-        <h2>Host Notification History</h2>
-        <p class="muted">Every silent digital alert sent using your saved profile:</p>
-        <ul class="notification-log">
-            {% if notifications %}
-                {% for n in notifications %}
-                    <li>
-                        <div>
-                            <strong>Train {{ n.train_id }} · {{ n.station_name }}</strong>
-                            <span class="pill pill-green">{{ n.status }}</span>
-                        </div>
-                        <p class="small-note">{{ n.message }}</p>
-                    </li>
-                {% endfor %}
-            {% else %}
-                <li class="muted">No host notifications sent yet. Head to the Live GPS dashboard to test 1-click boarding!</li>
-            {% endif %}
-        </ul>
-    </div>
+{% if bookings %}
+<section class="card">
+    <h2>Recent Booked Tickets</h2>
+    <ul class="notification-log">
+        {% for b in bookings %}
+            <li>
+                <strong>{{ b.booking_ref }} · {{ b.origin_station_name }} → {{ b.destination_station_name }}</strong>
+                <div class="small-note">
+                    Leave House ({{ b.origin_postcode }}): <strong>{{ b.leave_house_time }}</strong> ·
+                    Train {{ b.train_id }}: <strong>{{ b.train_departure_time }}</strong> ·
+                    {{ b.passenger_count }} pax · £{{ "%.2f"|format(b.total_price_gbp) }} ({{ b.payment_method }})
+                </div>
+                <span class="pill pill-green">{{ b.selected_coach }} · Ramp Ready</span>
+            </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+<section class="card">
+    <h2>Crew &amp; Ramp Notification History</h2>
+    <ul class="notification-log">
+        {% if notifications %}
+            {% for n in notifications %}
+                <li>
+                    <strong>Train {{ n.train_id }} · {{ n.station_name }}</strong>
+                    <div class="small-note">{{ n.message }}</div>
+                    <span class="pill pill-green">{{ n.status }}</span>
+                </li>
+            {% endfor %}
+        {% else %}
+            <li class="muted">No notifications sent yet.</li>
+        {% endif %}
+    </ul>
 </section>
 {% endblock %}
-

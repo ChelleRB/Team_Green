@@ -1,8 +1,8 @@
-"""HTML Web Controller routes for dashboard, registration, login, and profile."""
+"""HTML Web Controller routes for AccessRail mobile dashboard, registration, login, and profile."""
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from flask import (
     Blueprint,
@@ -28,6 +28,37 @@ def _current_user() -> Optional[User]:
     return _container().auth_service.get_user_by_id(user_id)
 
 
+def _extract_preferences_from_form() -> Dict[str, Any]:
+    categories = request.form.getlist("disability_categories")
+    is_wc = (
+        request.form.get("is_wheelchair_user") == "on"
+        or "wheelchair_mobility" in categories
+    )
+    return {
+        "is_wheelchair_user": is_wc,
+        "wheelchair_type": request.form.get("wheelchair_type", "power" if is_wc else "none"),
+        "disability_categories": categories,
+        "requires_ramp_deployment": request.form.get("requires_ramp_deployment") == "on" or is_wc,
+        "notify_host_automatically": request.form.get("notify_host_automatically") == "on",
+        "step_free_level_boarding_only": request.form.get("step_free_level_boarding_only") == "on",
+        "audio_guidance_enabled": request.form.get("audio_guidance_enabled") == "on",
+        "visual_guidance_high_contrast": request.form.get("visual_guidance_high_contrast") == "on",
+        "quiet_coach_preferred": request.form.get("quiet_coach_preferred") == "on",
+        "preferred_carriage_zone": request.form.get(
+            "preferred_carriage_zone", "Coach B (Level-Boarding Accessible Bay)"
+        ),
+        "assistance_notes": request.form.get("assistance_notes", ""),
+    }
+
+
+def _extract_emergency_contact_from_form() -> Dict[str, str]:
+    return {
+        "name": request.form.get("emergency_contact_name", ""),
+        "phone": request.form.get("emergency_contact_phone", ""),
+        "relationship": request.form.get("emergency_contact_relationship", ""),
+    }
+
+
 def create_web_blueprint() -> Blueprint:
     web_bp = Blueprint("web", __name__)
 
@@ -45,10 +76,15 @@ def create_web_blueprint() -> Blueprint:
             if user and user.id
             else []
         )
+        recent_bookings = container.booking_repository.list_recent(
+            user_id=user.id if user else None,
+            limit=3,
+        )
         return render_template(
             "index.html",
             stations=stations,
             recent_notifications=recent_notifications,
+            recent_bookings=recent_bookings,
         )
 
     @web_bp.route("/register", methods=["GET", "POST"])
@@ -60,27 +96,6 @@ def create_web_blueprint() -> Blueprint:
             home_address = request.form.get("home_address", "")
             postcode = request.form.get("postcode", "")
 
-            preferences_payload = {
-                "is_wheelchair_user": request.form.get("is_wheelchair_user") == "on",
-                "wheelchair_type": request.form.get("wheelchair_type", "power"),
-                "notify_host_automatically": (
-                    request.form.get("notify_host_automatically") == "on"
-                ),
-                "step_free_level_boarding_only": (
-                    request.form.get("step_free_level_boarding_only") == "on"
-                ),
-                "audio_guidance_enabled": (
-                    request.form.get("audio_guidance_enabled") == "on"
-                ),
-                "visual_guidance_high_contrast": (
-                    request.form.get("visual_guidance_high_contrast") == "on"
-                ),
-                "preferred_carriage_zone": request.form.get(
-                    "preferred_carriage_zone", "Carriage B (Level-Boarding Bay)"
-                ),
-                "assistance_notes": request.form.get("assistance_notes", ""),
-            }
-
             try:
                 user = _container().auth_service.register_user(
                     full_name=full_name,
@@ -88,11 +103,12 @@ def create_web_blueprint() -> Blueprint:
                     password=password,
                     home_address=home_address,
                     postcode=postcode,
-                    preferences_payload=preferences_payload,
+                    preferences_payload=_extract_preferences_from_form(),
+                    emergency_contact_payload=_extract_emergency_contact_from_form(),
                 )
                 session["user_id"] = user.id
                 flash(
-                    "Account created! Your wheelchair & host notification preferences are saved automatically for every trip.",
+                    "Profile created! Your accessibility options, emergency contact, and host preferences are saved.",
                     "success",
                 )
                 return redirect(url_for("web.dashboard"))
@@ -110,7 +126,7 @@ def create_web_blueprint() -> Blueprint:
             if user:
                 session["user_id"] = user.id
                 flash(
-                    f"Welcome back, {user.full_name}! Your saved step-free preferences are active.",
+                    f"Welcome back, {user.full_name}! Saved preferences & emergency contact loaded.",
                     "success",
                 )
                 return redirect(url_for("web.dashboard"))
@@ -120,12 +136,11 @@ def create_web_blueprint() -> Blueprint:
 
     @web_bp.route("/demo-maya-login", methods=["POST"])
     def demo_maya_login():
-        """One-click persona login for Maya Okafor during live demonstrations."""
         maya = _container().user_repository.find_by_email("maya.okafor@manchester.org")
         if maya and maya.id:
             session["user_id"] = maya.id
             flash(
-                "Signed in as Maya Okafor (Power Wheelchair User · Saved Preferences Active).",
+                "Signed in as Maya Okafor (Saved Accessibility Profile & Emergency Contact Active).",
                 "success",
             )
         return redirect(url_for("web.dashboard"))
@@ -140,41 +155,22 @@ def create_web_blueprint() -> Blueprint:
     def profile():
         user = _current_user()
         if not user or not user.id:
-            flash("Please sign in or register to view your saved preferences.", "info")
+            flash("Please sign in or register to manage your saved preferences.", "info")
             return redirect(url_for("web.login"))
 
         if request.method == "POST":
             home_address = request.form.get("home_address", user.home_address)
             postcode = request.form.get("postcode", user.postcode)
-            preferences_payload = {
-                "is_wheelchair_user": request.form.get("is_wheelchair_user") == "on",
-                "wheelchair_type": request.form.get("wheelchair_type", "power"),
-                "notify_host_automatically": (
-                    request.form.get("notify_host_automatically") == "on"
-                ),
-                "step_free_level_boarding_only": (
-                    request.form.get("step_free_level_boarding_only") == "on"
-                ),
-                "audio_guidance_enabled": (
-                    request.form.get("audio_guidance_enabled") == "on"
-                ),
-                "visual_guidance_high_contrast": (
-                    request.form.get("visual_guidance_high_contrast") == "on"
-                ),
-                "preferred_carriage_zone": request.form.get(
-                    "preferred_carriage_zone", "Carriage B (Level-Boarding Bay)"
-                ),
-                "assistance_notes": request.form.get("assistance_notes", ""),
-            }
             try:
                 _container().auth_service.update_saved_preferences(
                     user_id=user.id,
                     home_address=home_address,
                     postcode=postcode,
-                    preferences_payload=preferences_payload,
+                    preferences_payload=_extract_preferences_from_form(),
+                    emergency_contact_payload=_extract_emergency_contact_from_form(),
                 )
                 flash(
-                    "Saved! Your wheelchair and host-alert settings will automatically apply to all future journeys.",
+                    "Saved! Your inclusive accessibility settings & emergency contact apply automatically.",
                     "success",
                 )
                 return redirect(url_for("web.profile"))
@@ -182,11 +178,12 @@ def create_web_blueprint() -> Blueprint:
                 flash(str(exc), "error")
 
         notifications = _container().notification_repository.list_for_user(user.id)
+        bookings = _container().booking_repository.list_recent(user_id=user.id, limit=5)
         return render_template(
             "profile.html",
             user=user,
             notifications=notifications,
+            bookings=bookings,
         )
 
     return web_bp
-

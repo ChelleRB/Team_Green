@@ -1,222 +1,323 @@
 {% extends "base.html" %}
-{% block title %}GlidePath · Live GPS Train Tracker &amp; Step-Free Journey{% endblock %}
+{% block title %}AccessRail · Door-to-Door Booking, Live Travel &amp; Arrival{% endblock %}
 
 {% block content %}
-<!-- Persona / Saved Preferences Status Banner -->
+<!-- Top Welcome & Saved Inclusive Accessibility Card -->
 <section class="hero-card" aria-labelledby="hero-heading">
-    <div class="hero-content">
-        {% if current_user %}
-            <div class="pill-row">
-                <span class="pill pill-green">✓ Saved Preferences Active</span>
-                {% if current_user.preferences.is_wheelchair_user %}
-                    <span class="pill pill-green">♿ {{ current_user.preferences.wheelchair_type|capitalize }} Wheelchair User</span>
+    {% if current_user %}
+        <div class="pill-row">
+            <span class="pill pill-green">✓ Saved Profile Active</span>
+            {% if current_user.preferences.is_wheelchair_user %}
+                <span class="pill pill-purple">{{ current_user.preferences.wheelchair_type|capitalize }} Wheelchair User</span>
+            {% endif %}
+            {% for badge in current_user.preferences.inclusive_badges %}
+                {% if 'Wheelchair' not in badge %}
+                    <span class="pill pill-purple">{{ badge }}</span>
                 {% endif %}
-                {% if current_user.preferences.notify_host_automatically %}
-                    <span class="pill pill-blue">📡 Auto-Host Alert ON (No Ringing Ahead)</span>
-                {% endif %}
-            </div>
-            <h1 id="hero-heading">Ready when you are, {{ current_user.full_name.split()[0] }}.</h1>
-            <p class="hero-subtitle">
-                Saved origin: <strong>{{ current_user.home_address }}, {{ current_user.postcode }}</strong> ·
-                Preferred zone: <strong>{{ current_user.preferences.preferred_carriage_zone }}</strong>.
-                You never need to re-enter your accessibility needs.
-            </p>
-        {% else %}
-            <div class="pill-row">
-                <span class="pill pill-green">ACCESSIBILITY, INCLUSION &amp; INDEPENDENCE</span>
-                <span class="pill pill-dark">Greater Manchester Live Rail &amp; Metrolink</span>
-            </div>
-            <h1 id="hero-heading">“I want the same journey as everyone else, without having to ring ahead.”</h1>
-            <p class="hero-subtitle">
-                Register once to save your wheelchair &amp; host-notification preferences permanently, track trains via real-time GPS, and board step-free with confidence.
-            </p>
-            <div class="hero-actions">
-                <a href="{{ url_for('web.register') }}" class="btn btn-primary">Create Account &amp; Save Preferences</a>
-                <form action="{{ url_for('web.demo_maya_login') }}" method="POST" class="inline-form">
-                    <button type="submit" class="btn btn-secondary">One-Click Demo: Sign in as Maya Okafor</button>
-                </form>
-            </div>
-        {% endif %}
-    </div>
+            {% endfor %}
+        </div>
+        <h1 id="hero-heading">Hi {{ current_user.full_name.split()[0] }}, plan your door-to-door trip</h1>
+        <p class="hero-subtitle">
+            🏠 <strong>{{ current_user.home_address }}, {{ current_user.postcode }}</strong><br>
+            🚆 Preferred: <strong>{{ current_user.preferences.preferred_carriage_zone }}</strong>
+            {% if current_user.emergency_contact.is_configured %}
+                <br>🆘 Emergency Contact: <strong>{{ current_user.emergency_contact.name }} ({{ current_user.emergency_contact.phone }})</strong>
+            {% endif %}
+        </p>
+    {% else %}
+        <div class="pill-row">
+            <span class="pill pill-green">✓ Step-Free &amp; Inclusive</span>
+            <span class="pill pill-purple">Door-to-Door Rail</span>
+        </div>
+        <h1 id="hero-heading">Independent travel from your front door—no ringing ahead.</h1>
+        <p class="hero-subtitle">
+            Save accessibility needs &amp; emergency contacts once, compare routes with live lift alerts, book for yourself or companions, and track ramp deployment live.
+        </p>
+        <div class="hero-actions">
+            <form action="{{ url_for('web.demo_maya_login') }}" method="POST" class="full-width">
+                <button type="submit" class="btn btn-primary full-width">1-Tap Demo: Sign in as Maya Okafor</button>
+            </form>
+            <a href="{{ url_for('web.register') }}" class="btn btn-secondary full-width">Register (Accessibility &amp; Emergency Info)</a>
+        </div>
+    {% endif %}
 
-    <div class="guidance-controls" aria-label="Audio and Visual Guidance Controls">
-        <button type="button" id="toggle-audio-btn" class="btn btn-outline full-width">
-            🔊 Audio Guidance: <span id="audio-state-label">ON</span>
+    <div class="mobile-quick-actions" aria-label="Quick Guidance Controls">
+        <button type="button" id="toggle-audio-btn" class="chip-btn">
+            🔊 Audio: <strong id="audio-state-label">ON</strong>
         </button>
-        <button type="button" id="announce-next-btn" class="btn btn-outline full-width">
-            🗣️ Announce Next Step-Free Train
+        <button type="button" id="announce-next-btn" class="chip-btn">
+            🗣️ Speak Update
         </button>
-        <button type="button" id="locate-gps-btn" class="btn btn-outline full-width">
-            📍 Use My Live GPS Location
+        <button type="button" id="locate-gps-btn" class="chip-btn chip-green">
+            📍 Track My GPS
         </button>
     </div>
 </section>
 
-<!-- Live Guidance Toast / Banner for Clear Audio & Visual Guidance -->
+<!-- Live Guidance Strip -->
 <div id="live-guidance-banner" class="guidance-banner" role="region" aria-live="polite">
     <span class="guidance-dot" aria-hidden="true"></span>
-    <span id="live-guidance-text">Connecting to Manchester real-time rail GPS feed…</span>
+    <span id="live-guidance-text">Live rail telemetry &amp; ramp readiness active…</span>
 </div>
 
-<!-- Main Two-Column Grid: Live GPS Map + Incoming Trains -->
-<section class="dashboard-grid" aria-label="Real-Time GPS Train Tracking">
-    <!-- Left: Interactive Live GPS Corridor Map -->
-    <div class="card map-card">
-        <div class="card-header">
-            <div>
-                <h2>Live GPS Train Radar</h2>
-                <p class="muted" id="gps-telemetry-subtitle">Updating real-time WGS84 train coordinates every 2s</p>
-            </div>
-            <span class="live-indicator"><span class="pulse-dot"></span> LIVE GPS</span>
-        </div>
-
-        <div class="station-selector-bar">
-            <label for="station-select"><strong>Track Arrivals For Station:</strong></label>
-            <select id="station-select" class="form-control">
-                {% for st in stations %}
-                    <option value="{{ st.station_id }}" {% if st.station_id == 'CHOR' %}selected{% endif %}>
-                        {{ st.name }} — {{ '✓ Step-Free' if st.is_step_free_trusted else '⚠ Lift Alert' }}
-                    </option>
-                {% endfor %}
-            </select>
-        </div>
-
-        <!-- SVG Real-Coordinate GPS Map of Greater Manchester Corridor -->
-        <div class="gps-map-wrapper" role="img" aria-label="Interactive live GPS map of Greater Manchester stations and moving trains">
-            <svg id="manchester-gps-map" viewBox="0 0 720 420" preserveAspectRatio="xMidYMid meet">
-                <defs>
-                    <pattern id="radar-grid" width="36" height="36" patternUnits="userSpaceOnUse">
-                        <path d="M 36 0 L 0 0 0 36" fill="none" stroke="rgba(128, 239, 128, 0.08)" stroke-width="1"/>
-                    </pattern>
-                </defs>
-                <rect width="720" height="420" fill="#141815" rx="12"/>
-                <rect width="720" height="420" fill="url(#radar-grid)" rx="12"/>
-                <g id="map-corridors-layer"></g>
-                <g id="map-stations-layer"></g>
-                <g id="map-user-gps-layer"></g>
-                <g id="map-trains-layer"></g>
-            </svg>
-        </div>
-
-        <div class="map-legend">
-            <span><i class="legend-dot legend-trusted"></i> Verified Step-Free Station</span>
-            <span><i class="legend-dot legend-warning"></i> Broken Lift / Ramp Alert</span>
-            <span><i class="legend-dot legend-train"></i> Live GPS Train</span>
-            <span id="user-gps-readout" class="gps-coords-pill">GPS Ready</span>
+<!-- 1. DOOR-TO-DOOR PLANNING & BOOKING SECTION -->
+<section id="booking-section" class="card" aria-label="Door-to-Door Journey and Ticket Booking">
+    <div class="card-header">
+        <div>
+            <span class="step-tag">1 · PLAN &amp; BOOK</span>
+            <h2>Door-to-Door Route &amp; Booking</h2>
+            <p class="muted">From house postcode to station platform · Multi-passenger &amp; lift alerts</p>
         </div>
     </div>
 
-    <!-- Right: Live Incoming Trains & 1-Click Saved Host Ping -->
-    <div class="card arrivals-card">
-        <div class="card-header">
-            <div>
-                <h2 id="selected-station-heading">Chorlton Arrivals</h2>
-                <p class="muted" id="selected-station-note">Checking live lift, ramp &amp; level-boarding status…</p>
+    <form id="journey-plan-form" class="stack-form">
+        <div class="two-col-mobile">
+            <div class="form-group">
+                <label for="origin-postcode">House Postcode</label>
+                <input type="text" id="origin-postcode" name="origin_postcode" class="form-control"
+                       value="{{ current_user.postcode if current_user else 'M21 0UF' }}"
+                       placeholder="M21 0UF" required>
             </div>
-            <span id="selected-station-badge" class="pill pill-green">Trusted Step-Free</span>
+            <div class="form-group">
+                <label for="passenger-count">Passengers</label>
+                <select id="passenger-count" name="passenger_count" class="form-control">
+                    <option value="1" selected>1 Passenger</option>
+                    <option value="2">2 Passengers</option>
+                    <option value="3">3 Passengers</option>
+                    <option value="4">4 Passengers</option>
+                </select>
+            </div>
         </div>
 
+        <div class="form-group">
+            <label for="origin-address">House / Street Address (Commute Start)</label>
+            <input type="text" id="origin-address" name="origin_address" class="form-control"
+                   value="{{ current_user.home_address if current_user else '42 Wilbraham Road, Chorlton' }}"
+                   placeholder="42 Wilbraham Road, Chorlton" required>
+        </div>
+
+        <div class="two-col-mobile">
+            <div class="form-group">
+                <label for="origin-station">Boarding Station</label>
+                <select id="origin-station" name="origin_station_id" class="form-control">
+                    {% for st in stations %}
+                        <option value="{{ st.station_id }}" {% if st.station_id == 'CHOR' %}selected{% endif %}>
+                            {{ st.name }} {{ '✓' if st.is_step_free_trusted else '⚠ Lift Out' }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="destination-station">Destination</label>
+                <select id="destination-station" name="destination_station_id" class="form-control">
+                    {% for st in stations %}
+                        <option value="{{ st.station_id }}" {% if st.station_id == 'STPS' %}selected{% endif %}>
+                            {{ st.name }} {{ '✓' if st.is_step_free_trusted else '⚠ Lift Out' }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary full-width">
+            Compare Routes, Leave-House Times &amp; Lifts
+        </button>
+    </form>
+
+    <!-- Route Options + Payment & Multi-Passenger Booking Panel -->
+    <div id="journey-plan-result" class="journey-result hidden" aria-live="polite"></div>
+
+    <!-- Confirmed Ticket Receipt Box -->
+    <div id="booking-confirmation-box" class="booking-ticket hidden" aria-live="polite"></div>
+</section>
+
+<!-- 2. LIVE TRAVEL SECTION (STOP-BY-STOP UPDATES, COACH ACCESSIBILITY & RAMP DEPLOYMENT) -->
+<section id="travel-section" class="card" aria-label="Live Journey Updates and Accessible Coaches">
+    <div class="card-header">
+        <div>
+            <span class="step-tag">2 · EN-ROUTE LIVE TRAVEL</span>
+            <h2>Live Journey &amp; Accessible Coaches</h2>
+            <p class="muted">Stop-by-stop live spots, GPS location &amp; boarding ramp alert</p>
+        </div>
+        <span class="live-indicator"><span class="pulse-dot"></span> TRACKING</span>
+    </div>
+
+    <div class="form-group">
+        <label for="active-train-select">Active Train Being Tracked</label>
+        <select id="active-train-select" class="form-control">
+            <option value="TR-101">TR-101 · South Manchester Step-Free Line</option>
+            <option value="TR-104">TR-104 · South Manchester Step-Free Line</option>
+            <option value="TR-208">TR-208 · Piccadilly City Express</option>
+            <option value="TR-312">TR-312 · Oxford Corridor Regional Rail</option>
+        </select>
+    </div>
+
+    <!-- Live Spot-by-Spot Banner -->
+    <div id="travel-spot-banner" class="spot-status-box">
+        <strong>📍 Current Train Spot:</strong> <span id="travel-spot-text">Updating live corridor spot…</span>
+        <div class="train-gps-coord" id="travel-gps-coords">GPS syncing…</div>
+    </div>
+
+    <!-- Stop-by-Stop Checkpoints from Beginning to End -->
+    <div class="sub-section">
+        <h3 class="sub-heading">Journey Checkpoints (Door-to-Destination)</h3>
+        <ul id="travel-checkpoints-list" class="checkpoint-timeline">
+            <li class="muted">Loading live checkpoints…</li>
+        </ul>
+    </div>
+
+    <!-- Coach-by-Coach Accessibility & Space Layout -->
+    <div class="sub-section">
+        <h3 class="sub-heading">Which Coaches Are Wheelchair Accessible?</h3>
+        <div id="coaches-accessibility-grid" class="coaches-grid"></div>
+    </div>
+
+    <button type="button" id="notify-boarding-ramp-btn" class="btn btn-primary full-width">
+        ♿ Notify Train Crew: Deploy Boarding Ramp &amp; Reserve Coach
+    </button>
+</section>
+
+<!-- 3. ARRIVAL SECTION (ARRIVAL RAMP DEPLOYMENT + COACH TOO FULL ALERTS + LIFT STATUS) -->
+<section id="arrival-section" class="card" aria-label="Arrival Ramp Deployment and Coach Capacity Alerts">
+    <div class="card-header">
+        <div>
+            <span class="step-tag">3 · ARRIVAL &amp; ALIGHTING</span>
+            <h2>Arrival Ramp &amp; Capacity Alerts</h2>
+            <p class="muted">Alerts if a coach is too full &amp; prepares destination ramp</p>
+        </div>
+    </div>
+
+    <!-- Dynamic Coach Too Full Alert -->
+    <div id="arrival-crowding-alert" class="crowding-alert-box" role="alert">
+        Checking live coach occupancy &amp; wheelchair space capacity…
+    </div>
+
+    <div class="form-group">
+        <label for="arrival-station-select">Alighting / Arrival Station</label>
+        <select id="arrival-station-select" class="form-control">
+            {% for st in stations %}
+                <option value="{{ st.station_id }}" {% if st.station_id == 'STPS' %}selected{% endif %}>
+                    {{ st.name }} — {{ '✓ Lift & Step-Free OK' if st.is_step_free_trusted else '⚠ Lift Out of Service' }}
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="stack-buttons">
+        <button type="button" id="notify-arrival-ramp-btn" class="btn btn-green-solid full-width">
+            🏁 Notify Train &amp; Platform: Deploy Arrival Ramp Now
+        </button>
+        <button type="button" id="share-emergency-arrival-btn" class="btn btn-secondary full-width">
+            🆘 Share Live Arrival Status with Emergency Contact
+        </button>
+    </div>
+
+    <div id="arrival-status-feedback" class="small-feedback hidden" aria-live="polite"></div>
+
+    <hr class="divider">
+    <h3 class="sub-heading">Station Lift &amp; Ramp Status</h3>
+    <div id="stations-trust-list" class="station-trust-list">
+        {% for st in stations %}
+            <div class="station-trust-item" data-station-id="{{ st.station_id }}">
+                <div class="station-trust-info">
+                    <div class="station-trust-title-row">
+                        <strong>{{ st.name }}</strong>
+                        <span class="pill {{ 'pill-green' if st.is_step_free_trusted else 'pill-amber' }}">
+                            {{ '✓ Lift OK' if st.is_step_free_trusted else '⚠ Lift Out' }}
+                        </span>
+                    </div>
+                    <p class="small-note">{{ st.accessibility_note }}</p>
+                </div>
+                <div class="station-trust-actions">
+                    {% if st.lift_status.value == 'operational' %}
+                        <button type="button" class="btn btn-outline btn-xs report-facility-btn"
+                                data-station="{{ st.station_id }}" data-status="out_of_service">
+                            Flag Fault
+                        </button>
+                    {% else %}
+                        <button type="button" class="btn btn-green-soft btn-xs report-facility-btn"
+                                data-station="{{ st.station_id }}" data-status="operational">
+                            Mark Fixed
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+
+    {% if current_user %}
+        <hr class="divider">
+        <h3 class="sub-heading">Crew &amp; Ramp Notification Log</h3>
+        <ul id="host-notifications-log" class="notification-log">
+            {% if recent_notifications %}
+                {% for n in recent_notifications %}
+                    <li>
+                        <strong>{{ n.train_id }} · {{ n.station_name }}</strong>
+                        <div class="small-note">{{ n.message }}</div>
+                        <span class="pill pill-green">{{ n.status }}</span>
+                    </li>
+                {% endfor %}
+            {% else %}
+                <li class="muted">Ramp &amp; crew notifications will appear here automatically.</li>
+            {% endif %}
+        </ul>
+    {% endif %}
+</section>
+
+<!-- 4. BOTTOM SECTION: LIVE GPS TRAIN RADAR & STATION ARRIVALS -->
+<section id="gps-radar-section" class="card" aria-label="Live GPS Train Radar">
+    <div class="card-header">
+        <div>
+            <span class="step-tag">4 · LIVE GPS RADAR</span>
+            <h2>Live GPS Train Radar</h2>
+            <p class="muted" id="gps-telemetry-subtitle">Real-time train positions across Greater Manchester</p>
+        </div>
+        <span class="live-indicator"><span class="pulse-dot"></span> LIVE GPS</span>
+    </div>
+
+    <div class="form-group station-picker">
+        <label for="station-select">Filter Arrivals Board By Station</label>
+        <select id="station-select" class="form-control">
+            {% for st in stations %}
+                <option value="{{ st.station_id }}" {% if st.station_id == 'CHOR' %}selected{% endif %}>
+                    {{ st.name }} ({{ '✓ Step-Free' if st.is_step_free_trusted else '⚠ Lift Out' }})
+                </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="gps-map-wrapper" role="img" aria-label="Interactive live GPS map of Greater Manchester stations and moving trains">
+        <svg id="manchester-gps-map" viewBox="0 0 380 265" preserveAspectRatio="xMidYMid meet">
+            <defs>
+                <pattern id="radar-grid" width="26" height="26" patternUnits="userSpaceOnUse">
+                    <path d="M 26 0 L 0 0 0 26" fill="none" stroke="rgba(139, 108, 223, 0.13)" stroke-width="1"/>
+                </pattern>
+            </defs>
+            <rect width="380" height="265" fill="#f6f2ff" rx="14"/>
+            <rect width="380" height="265" fill="url(#radar-grid)" rx="14"/>
+            <g id="map-corridors-layer"></g>
+            <g id="map-stations-layer"></g>
+            <g id="map-user-gps-layer"></g>
+            <g id="map-trains-layer"></g>
+        </svg>
+    </div>
+
+    <div class="map-legend">
+        <span><i class="legend-dot legend-trusted"></i> Step-Free</span>
+        <span><i class="legend-dot legend-warning"></i> Lift Out</span>
+        <span><i class="legend-dot legend-train"></i> Live Train</span>
+        <span id="user-gps-readout" class="gps-coords-pill">GPS Ready</span>
+    </div>
+
+    <div class="arrivals-subbox">
+        <div class="station-trust-title-row" style="margin-bottom:8px;">
+            <strong id="selected-station-heading">Chorlton Arrivals</strong>
+            <span id="selected-station-badge" class="pill pill-green">✓ Step-Free</span>
+        </div>
+        <p class="muted" id="selected-station-note" style="margin-bottom:10px;"></p>
         <div id="trains-live-list" class="trains-list" aria-live="polite">
             <p class="muted">Loading live GPS train positions…</p>
         </div>
-    </div>
-</section>
-
-<!-- Spontaneous Door-to-Door Journey Planner + Station Lift/Ramp Reliability -->
-<section class="dashboard-grid secondary-grid">
-    <!-- Spontaneous Trip Planner (No Booking Ahead) -->
-    <div class="card">
-        <div class="card-header">
-            <div>
-                <h2>Spontaneous Door-to-Door Planner</h2>
-                <p class="muted">Zero 24-hour booking ahead. Routes around broken lifts automatically.</p>
-            </div>
-        </div>
-
-        <form id="journey-plan-form" class="stack-form">
-            <div class="form-row-2">
-                <div class="form-group">
-                    <label for="origin-station">From Station (Near Saved Address)</label>
-                    <select id="origin-station" name="origin_station_id" class="form-control">
-                        {% for st in stations %}
-                            <option value="{{ st.station_id }}" {% if st.station_id == 'CHOR' %}selected{% endif %}>
-                                {{ st.name }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="destination-station">To Destination</label>
-                    <select id="destination-station" name="destination_station_id" class="form-control">
-                        {% for st in stations %}
-                            <option value="{{ st.station_id }}" {% if st.station_id == 'STPS' %}selected{% endif %}>
-                                {{ st.name }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-            </div>
-            <button type="submit" class="btn btn-primary full-width">
-                Plan Instant Step-Free Trip {% if current_user and current_user.preferences.notify_host_automatically %}(+ Auto-Notify Host){% endif %}
-            </button>
-        </form>
-
-        <div id="journey-plan-result" class="journey-result hidden" aria-live="polite"></div>
-    </div>
-
-    <!-- Station Lift & Ramp Reliability + Recent Silent Host Alerts -->
-    <div class="card">
-        <div class="card-header">
-            <div>
-                <h2>Trusted Stops, Lifts &amp; Host Log</h2>
-                <p class="muted">Real-time equipment verification — report broken lifts or ramps in 1 click.</p>
-            </div>
-        </div>
-
-        <div id="stations-trust-list" class="station-trust-list">
-            {% for st in stations %}
-                <div class="station-trust-item" data-station-id="{{ st.station_id }}">
-                    <div>
-                        <strong>{{ st.name }}</strong>
-                        <span class="pill {{ 'pill-green' if st.is_step_free_trusted else 'pill-amber' }}">
-                            {{ st.trust_badge }}
-                        </span>
-                        <p class="small-note">{{ st.accessibility_note }}</p>
-                    </div>
-                    <div class="station-trust-actions">
-                        {% if st.lift_status.value == 'operational' %}
-                            <button type="button" class="btn btn-outline btn-xs report-facility-btn"
-                                    data-station="{{ st.station_id }}" data-status="out_of_service">
-                                Report Lift Fault
-                            </button>
-                        {% else %}
-                            <button type="button" class="btn btn-secondary btn-xs report-facility-btn"
-                                    data-station="{{ st.station_id }}" data-status="operational">
-                                Mark Lift Fixed
-                            </button>
-                        {% endif %}
-                    </div>
-                </div>
-            {% endfor %}
-        </div>
-
-        {% if current_user %}
-            <hr class="divider">
-            <h3>Recent Silent Host Alerts Sent</h3>
-            <ul id="host-notifications-log" class="notification-log">
-                {% if recent_notifications %}
-                    {% for n in recent_notifications %}
-                        <li>
-                            <strong>{{ n.train_id }} at {{ n.station_name }}</strong> —
-                            <span>{{ n.preferred_carriage }}</span>
-                            <span class="pill pill-green">{{ n.status }}</span>
-                        </li>
-                    {% endfor %}
-                {% else %}
-                    <li class="muted">Click "Board &amp; Notify Host" on any train to alert the host digitally with one tap.</li>
-                {% endif %}
-            </ul>
-        {% endif %}
     </div>
 </section>
 {% endblock %}

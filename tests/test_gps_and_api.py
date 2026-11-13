@@ -1,4 +1,4 @@
-"""Integration tests for live GPS train tracking, spontaneous planning, and host alerts."""
+"""Integration tests for postcode-to-station routing, multi-passenger booking, live travel, and arrival ramp/crowding alerts."""
 
 import os
 import tempfile
@@ -7,8 +7,8 @@ import unittest
 from app import create_app
 
 
-class TestLiveGPSAndJourneyAPI(unittest.TestCase):
-    """Verify real-time GPS endpoints, door-to-door routing, and 1-click host pings."""
+class TestLiveGPSBookingTravelAndArrivalAPI(unittest.TestCase):
+    """Verify end-to-end Door-to-Door Booking, Live Travel Checkpoints, and Arrival Ramp/Capacity APIs."""
 
     def setUp(self) -> None:
         self.temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -27,31 +27,28 @@ class TestLiveGPSAndJourneyAPI(unittest.TestCase):
         if os.path.exists(self.temp_db.name):
             os.unlink(self.temp_db.name)
 
-    def test_live_gps_trains_endpoint_with_user_coordinates(self) -> None:
+    def test_live_gps_trains_includes_checkpoints_accessible_coaches_and_crowding(self) -> None:
         res = self.client.get(
             "/api/trains/live?station_id=CHOR&lat=53.4420&lon=-2.2745"
         )
         self.assertEqual(res.status_code, 200)
         payload = res.get_json()
 
-        self.assertEqual(payload["selected_station_id"], "CHOR")
-        self.assertGreaterEqual(len(payload["trains"]), 4)
-        self.assertIsNotNone(payload["nearest_to_user"])
-        self.assertEqual(
-            payload["nearest_to_user"]["recommended_step_free_station_id"], "CHOR"
-        )
-
         first_train = payload["trains"][0]
-        self.assertIn("latitude", first_train["coordinates"])
-        self.assertIn("longitude", first_train["coordinates"])
-        self.assertIn("eta_selected_minutes", first_train)
+        self.assertIn("journey_checkpoints", first_train)
+        self.assertIn("accessible_coaches", first_train)
+        self.assertIn("coaches", first_train)
+        self.assertIn("crowding_alert", first_train)
 
-    def test_spontaneous_journey_plan_auto_notifies_host_for_signed_in_user(self) -> None:
+    def test_postcode_to_station_plan_returns_multiple_routes_leave_house_time_and_lift_flags(self) -> None:
         self.client.post("/demo-maya-login")
 
         plan_res = self.client.post(
             "/api/journey/plan",
             json={
+                "origin_postcode": "M21 0UF",
+                "origin_address": "42 Wilbraham Road, Chorlton",
+                "passenger_count": 2,
                 "origin_station_id": "CHOR",
                 "destination_station_id": "STPS",
             },
@@ -59,58 +56,63 @@ class TestLiveGPSAndJourneyAPI(unittest.TestCase):
         self.assertEqual(plan_res.status_code, 200)
         plan = plan_res.get_json()
 
-        self.assertTrue(plan["fully_step_free_verified"])
-        self.assertEqual(len(plan["steps"]), 3)
-        self.assertIsNotNone(plan["auto_host_notification"])
-        self.assertEqual(
-            plan["auto_host_notification"]["passenger_name"], "Maya Okafor"
-        )
+        self.assertEqual(plan["house_to_station_commute"]["origin_postcode"], "M21 0UF")
+        self.assertEqual(len(plan["route_options"]), 3)
 
-    def test_broken_lift_warning_and_live_facility_reporting(self) -> None:
-        # Oxford Road starts with an out-of-service lift alert
-        plan_res = self.client.post(
-            "/api/journey/plan",
-            json={
-                "origin_station_id": "CHOR",
-                "destination_station_id": "OXFD",
-            },
-        )
-        self.assertEqual(plan_res.status_code, 200)
-        plan = plan_res.get_json()
-        self.assertFalse(plan["fully_step_free_verified"])
-        self.assertGreaterEqual(len(plan["warnings"]), 1)
+        opt1 = plan["route_options"][0]
+        self.assertIn("leave_house_time", opt1)
+        self.assertIn("train_departure_time", opt1)
+        self.assertFalse(opt1["lift_flagged"])
 
-        # Mark Oxford Road lift back in service via live report API
-        report_res = self.client.post(
-            "/api/facility/report",
-            json={
-                "station_id": "OXFD",
-                "facility_type": "lift",
-                "status": "operational",
-                "note": "Engineers repaired Platform 2/3 lift.",
-            },
-        )
-        self.assertEqual(report_res.status_code, 201)
-        self.assertEqual(report_res.get_json()["station"]["lift_status"], "operational")
+        # Option 3 via Oxford Road flags the out-of-service lift
+        opt3 = plan["route_options"][2]
+        self.assertTrue(opt3["lift_flagged"])
+        self.assertIn("LIFT OUT OF SERVICE", opt3["lift_flag_reason"])
 
-    def test_one_click_notify_host_requires_auth_then_succeeds(self) -> None:
-        unauth_res = self.client.post(
-            "/api/notify-host",
-            json={"train_id": "TR-101", "station_id": "CHOR"},
-        )
-        self.assertEqual(unauth_res.status_code, 401)
-
+    def test_multi_passenger_booking_with_payment_and_ramp_notifications(self) -> None:
         self.client.post("/demo-maya-login")
-        auth_res = self.client.post(
-            "/api/notify-host",
-            json={"train_id": "TR-101", "station_id": "CHOR"},
+
+        book_res = self.client.post(
+            "/api/bookings",
+            json={
+                "lead_passenger_name": "Maya Okafor",
+                "passenger_count": 2,
+                "companion_names": "Samira Patel",
+                "origin_postcode": "M21 0UF",
+                "origin_address": "42 Wilbraham Road, Chorlton",
+                "origin_station_id": "CHOR",
+                "destination_station_id": "STPS",
+                "train_id": "TR-101",
+                "selected_coach": "Coach B",
+                "leave_house_time": "09:25",
+                "train_departure_time": "09:35",
+                "estimated_arrival_time": "09:49",
+                "payment_method": "Apple Pay / Google Pay",
+                "ramp_requested": True,
+            },
         )
-        self.assertEqual(auth_res.status_code, 201)
-        notif = auth_res.get_json()["notification"]
-        self.assertEqual(notif["train_id"], "TR-101")
-        self.assertEqual(notif["wheelchair_type"], "power")
+        self.assertEqual(book_res.status_code, 201)
+        data = book_res.get_json()
+        self.assertTrue(data["booking"]["booking_ref"].startswith("AR-"))
+        self.assertEqual(data["booking"]["passenger_count"], 2)
+        self.assertEqual(len(data["notifications_sent"]), 2)
+
+    def test_arrival_ramp_deployment_and_coach_too_full_alert(self) -> None:
+        self.client.post("/demo-maya-login")
+        res = self.client.post(
+            "/api/notify-host",
+            json={
+                "train_id": "TR-101",
+                "station_id": "STPS",
+                "stage": "arrival",
+            },
+        )
+        self.assertEqual(res.status_code, 201)
+        payload = res.get_json()
+        self.assertIn("Arrival", payload["notification"]["status"])
+        self.assertTrue(payload["any_coach_too_full"])
+        self.assertIn("too full", payload["crowding_alert"])
 
 
 if __name__ == "__main__":
     unittest.main()
-
