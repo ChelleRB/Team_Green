@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Saved Accessibility Preferences · GlidePath{% endblock %}
+
+{% block content %}
+<section class="dashboard-grid">
+    <div class="card">
+        <div class="pill-row">
+            <span class="pill pill-green">SAVED ACCESSIBILITY PASSPORT</span>
+        </div>
+        <h1>{{ user.full_name }}’s Saved Preferences</h1>
+        <p class="muted">
+            Account: <strong>{{ user.email }}</strong> · Update once below and GlidePath automatically applies these settings on every journey.
+        </p>
+
+        <form method="POST" action="{{ url_for('web.profile') }}" class="stack-form">
+            <div class="form-row-3-1">
+                <div class="form-group">
+                    <label for="home_address">Saved Home Address</label>
+                    <input type="text" id="home_address" name="home_address" class="form-control"
+                           value="{{ user.home_address }}" required>
+                </div>
+                <div class="form-group">
+                    <label for="postcode">Postcode</label>
+                    <input type="text" id="postcode" name="postcode" class="form-control"
+                           value="{{ user.postcode }}" required>
+                </div>
+            </div>
+
+            <label class="preference-card-toggle" for="is_wheelchair_user">
+                <input type="checkbox" id="is_wheelchair_user" name="is_wheelchair_user"
+                       {% if user.preferences.is_wheelchair_user %}checked{% endif %}>
+                <div>
+                    <strong>♿ Let host know I am a wheelchair user</strong>
+                    <p class="small-note">{{ user.preferences.host_alert_summary }}</p>
+                </div>
+            </label>
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label for="wheelchair_type">Mobility Aid Type</label>
+                    <select id="wheelchair_type" name="wheelchair_type" class="form-control">
+                        <option value="power" {% if user.preferences.wheelchair_type == 'power' %}selected{% endif %}>Power Wheelchair</option>
+                        <option value="manual" {% if user.preferences.wheelchair_type == 'manual' %}selected{% endif %}>Manual Wheelchair</option>
+                        <option value="scooter" {% if user.preferences.wheelchair_type == 'scooter' %}selected{% endif %}>Mobility Scooter</option>
+                        <option value="none" {% if user.preferences.wheelchair_type == 'none' %}selected{% endif %}>None</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="preferred_carriage_zone">Preferred Boarding Zone</label>
+                    <input type="text" id="preferred_carriage_zone" name="preferred_carriage_zone"
+                           class="form-control" value="{{ user.preferences.preferred_carriage_zone }}">
+                </div>
+            </div>
+
+            <label class="preference-card-toggle" for="notify_host_automatically">
+                <input type="checkbox" id="notify_host_automatically" name="notify_host_automatically"
+                       {% if user.preferences.notify_host_automatically %}checked{% endif %}>
+                <div>
+                    <strong>📡 Auto-notify train &amp; station host silently (no phone call ahead)</strong>
+                </div>
+            </label>
+
+            <label class="preference-card-toggle" for="step_free_level_boarding_only">
+                <input type="checkbox" id="step_free_level_boarding_only" name="step_free_level_boarding_only"
+                       {% if user.preferences.step_free_level_boarding_only %}checked{% endif %}>
+                <div>
+                    <strong>🛤️ Step-free level boarding only (avoid broken lifts &amp; manual ramps)</strong>
+                </div>
+            </label>
+
+            <div class="form-row-2">
+                <label class="preference-card-toggle" for="audio_guidance_enabled">
+                    <input type="checkbox" id="audio_guidance_enabled" name="audio_guidance_enabled"
+                           {% if user.preferences.audio_guidance_enabled %}checked{% endif %}>
+                    <div><strong>🔊 Audio Guidance</strong></div>
+                </label>
+                <label class="preference-card-toggle" for="visual_guidance_high_contrast">
+                    <input type="checkbox" id="visual_guidance_high_contrast" name="visual_guidance_high_contrast"
+                           {% if user.preferences.visual_guidance_high_contrast %}checked{% endif %}>
+                    <div><strong>👁️ High-Contrast Visual Mode</strong></div>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="assistance_notes">Standing Host Note</label>
+                <input type="text" id="assistance_notes" name="assistance_notes" class="form-control"
+                       value="{{ user.preferences.assistance_notes }}">
+            </div>
+
+            <button type="submit" class="btn btn-primary full-width">Update Saved Preferences</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h2>Host Notification History</h2>
+        <p class="muted">Every silent digital alert sent using your saved profile:</p>
+        <ul class="notification-log">
+            {% if notifications %}
+                {% for n in notifications %}
+                    <li>
+                        <div>
+                            <strong>Train {{ n.train_id }} · {{ n.station_name }}</strong>
+                            <span class="pill pill-green">{{ n.status }}</span>
+                        </div>
+                        <p class="small-note">{{ n.message }}</p>
+                    </li>
+                {% endfor %}
+            {% else %}
+                <li class="muted">No host notifications sent yet. Head to the Live GPS dashboard to test 1-click boarding!</li>
+            {% endif %}
+        </ul>
+    </div>
+</section>
+{% endblock %}
+

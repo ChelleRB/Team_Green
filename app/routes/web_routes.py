@@ -1,0 +1,192 @@
+"""HTML Web Controller routes for dashboard, registration, login, and profile."""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+
+from app import ServiceContainer
+from app.models.user import User
+
+
+def _container() -> ServiceContainer:
+    return current_app.extensions["container"]
+
+
+def _current_user() -> Optional[User]:
+    user_id = session.get("user_id")
+    return _container().auth_service.get_user_by_id(user_id)
+
+
+def create_web_blueprint() -> Blueprint:
+    web_bp = Blueprint("web", __name__)
+
+    @web_bp.context_processor
+    def inject_user() -> dict:
+        return {"current_user": _current_user()}
+
+    @web_bp.route("/")
+    def dashboard():
+        container = _container()
+        user = _current_user()
+        stations = container.gps_service.list_stations()
+        recent_notifications = (
+            container.notification_repository.list_for_user(user.id)
+            if user and user.id
+            else []
+        )
+        return render_template(
+            "index.html",
+            stations=stations,
+            recent_notifications=recent_notifications,
+        )
+
+    @web_bp.route("/register", methods=["GET", "POST"])
+    def register():
+        if request.method == "POST":
+            full_name = request.form.get("full_name", "")
+            email = request.form.get("email", "")
+            password = request.form.get("password", "")
+            home_address = request.form.get("home_address", "")
+            postcode = request.form.get("postcode", "")
+
+            preferences_payload = {
+                "is_wheelchair_user": request.form.get("is_wheelchair_user") == "on",
+                "wheelchair_type": request.form.get("wheelchair_type", "power"),
+                "notify_host_automatically": (
+                    request.form.get("notify_host_automatically") == "on"
+                ),
+                "step_free_level_boarding_only": (
+                    request.form.get("step_free_level_boarding_only") == "on"
+                ),
+                "audio_guidance_enabled": (
+                    request.form.get("audio_guidance_enabled") == "on"
+                ),
+                "visual_guidance_high_contrast": (
+                    request.form.get("visual_guidance_high_contrast") == "on"
+                ),
+                "preferred_carriage_zone": request.form.get(
+                    "preferred_carriage_zone", "Carriage B (Level-Boarding Bay)"
+                ),
+                "assistance_notes": request.form.get("assistance_notes", ""),
+            }
+
+            try:
+                user = _container().auth_service.register_user(
+                    full_name=full_name,
+                    email=email,
+                    password=password,
+                    home_address=home_address,
+                    postcode=postcode,
+                    preferences_payload=preferences_payload,
+                )
+                session["user_id"] = user.id
+                flash(
+                    "Account created! Your wheelchair & host notification preferences are saved automatically for every trip.",
+                    "success",
+                )
+                return redirect(url_for("web.dashboard"))
+            except ValueError as exc:
+                flash(str(exc), "error")
+
+        return render_template("register.html")
+
+    @web_bp.route("/login", methods=["GET", "POST"])
+    def login():
+        if request.method == "POST":
+            email = request.form.get("email", "")
+            password = request.form.get("password", "")
+            user = _container().auth_service.authenticate(email, password)
+            if user:
+                session["user_id"] = user.id
+                flash(
+                    f"Welcome back, {user.full_name}! Your saved step-free preferences are active.",
+                    "success",
+                )
+                return redirect(url_for("web.dashboard"))
+            flash("Invalid email or password. Please try again.", "error")
+
+        return render_template("login.html")
+
+    @web_bp.route("/demo-maya-login", methods=["POST"])
+    def demo_maya_login():
+        """One-click persona login for Maya Okafor during live demonstrations."""
+        maya = _container().user_repository.find_by_email("maya.okafor@manchester.org")
+        if maya and maya.id:
+            session["user_id"] = maya.id
+            flash(
+                "Signed in as Maya Okafor (Power Wheelchair User · Saved Preferences Active).",
+                "success",
+            )
+        return redirect(url_for("web.dashboard"))
+
+    @web_bp.route("/logout", methods=["POST", "GET"])
+    def logout():
+        session.clear()
+        flash("You have been signed out.", "info")
+        return redirect(url_for("web.dashboard"))
+
+    @web_bp.route("/profile", methods=["GET", "POST"])
+    def profile():
+        user = _current_user()
+        if not user or not user.id:
+            flash("Please sign in or register to view your saved preferences.", "info")
+            return redirect(url_for("web.login"))
+
+        if request.method == "POST":
+            home_address = request.form.get("home_address", user.home_address)
+            postcode = request.form.get("postcode", user.postcode)
+            preferences_payload = {
+                "is_wheelchair_user": request.form.get("is_wheelchair_user") == "on",
+                "wheelchair_type": request.form.get("wheelchair_type", "power"),
+                "notify_host_automatically": (
+                    request.form.get("notify_host_automatically") == "on"
+                ),
+                "step_free_level_boarding_only": (
+                    request.form.get("step_free_level_boarding_only") == "on"
+                ),
+                "audio_guidance_enabled": (
+                    request.form.get("audio_guidance_enabled") == "on"
+                ),
+                "visual_guidance_high_contrast": (
+                    request.form.get("visual_guidance_high_contrast") == "on"
+                ),
+                "preferred_carriage_zone": request.form.get(
+                    "preferred_carriage_zone", "Carriage B (Level-Boarding Bay)"
+                ),
+                "assistance_notes": request.form.get("assistance_notes", ""),
+            }
+            try:
+                _container().auth_service.update_saved_preferences(
+                    user_id=user.id,
+                    home_address=home_address,
+                    postcode=postcode,
+                    preferences_payload=preferences_payload,
+                )
+                flash(
+                    "Saved! Your wheelchair and host-alert settings will automatically apply to all future journeys.",
+                    "success",
+                )
+                return redirect(url_for("web.profile"))
+            except ValueError as exc:
+                flash(str(exc), "error")
+
+        notifications = _container().notification_repository.list_for_user(user.id)
+        return render_template(
+            "profile.html",
+            user=user,
+            notifications=notifications,
+        )
+
+    return web_bp
+

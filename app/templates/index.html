@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}GlidePath · Live GPS Train Tracker &amp; Step-Free Journey{% endblock %}
+
+{% block content %}
+<!-- Persona / Saved Preferences Status Banner -->
+<section class="hero-card" aria-labelledby="hero-heading">
+    <div class="hero-content">
+        {% if current_user %}
+            <div class="pill-row">
+                <span class="pill pill-green">✓ Saved Preferences Active</span>
+                {% if current_user.preferences.is_wheelchair_user %}
+                    <span class="pill pill-green">♿ {{ current_user.preferences.wheelchair_type|capitalize }} Wheelchair User</span>
+                {% endif %}
+                {% if current_user.preferences.notify_host_automatically %}
+                    <span class="pill pill-blue">📡 Auto-Host Alert ON (No Ringing Ahead)</span>
+                {% endif %}
+            </div>
+            <h1 id="hero-heading">Ready when you are, {{ current_user.full_name.split()[0] }}.</h1>
+            <p class="hero-subtitle">
+                Saved origin: <strong>{{ current_user.home_address }}, {{ current_user.postcode }}</strong> ·
+                Preferred zone: <strong>{{ current_user.preferences.preferred_carriage_zone }}</strong>.
+                You never need to re-enter your accessibility needs.
+            </p>
+        {% else %}
+            <div class="pill-row">
+                <span class="pill pill-green">ACCESSIBILITY, INCLUSION &amp; INDEPENDENCE</span>
+                <span class="pill pill-dark">Greater Manchester Live Rail &amp; Metrolink</span>
+            </div>
+            <h1 id="hero-heading">“I want the same journey as everyone else, without having to ring ahead.”</h1>
+            <p class="hero-subtitle">
+                Register once to save your wheelchair &amp; host-notification preferences permanently, track trains via real-time GPS, and board step-free with confidence.
+            </p>
+            <div class="hero-actions">
+                <a href="{{ url_for('web.register') }}" class="btn btn-primary">Create Account &amp; Save Preferences</a>
+                <form action="{{ url_for('web.demo_maya_login') }}" method="POST" class="inline-form">
+                    <button type="submit" class="btn btn-secondary">One-Click Demo: Sign in as Maya Okafor</button>
+                </form>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="guidance-controls" aria-label="Audio and Visual Guidance Controls">
+        <button type="button" id="toggle-audio-btn" class="btn btn-outline full-width">
+            🔊 Audio Guidance: <span id="audio-state-label">ON</span>
+        </button>
+        <button type="button" id="announce-next-btn" class="btn btn-outline full-width">
+            🗣️ Announce Next Step-Free Train
+        </button>
+        <button type="button" id="locate-gps-btn" class="btn btn-outline full-width">
+            📍 Use My Live GPS Location
+        </button>
+    </div>
+</section>
+
+<!-- Live Guidance Toast / Banner for Clear Audio & Visual Guidance -->
+<div id="live-guidance-banner" class="guidance-banner" role="region" aria-live="polite">
+    <span class="guidance-dot" aria-hidden="true"></span>
+    <span id="live-guidance-text">Connecting to Manchester real-time rail GPS feed…</span>
+</div>
+
+<!-- Main Two-Column Grid: Live GPS Map + Incoming Trains -->
+<section class="dashboard-grid" aria-label="Real-Time GPS Train Tracking">
+    <!-- Left: Interactive Live GPS Corridor Map -->
+    <div class="card map-card">
+        <div class="card-header">
+            <div>
+                <h2>Live GPS Train Radar</h2>
+                <p class="muted" id="gps-telemetry-subtitle">Updating real-time WGS84 train coordinates every 2s</p>
+            </div>
+            <span class="live-indicator"><span class="pulse-dot"></span> LIVE GPS</span>
+        </div>
+
+        <div class="station-selector-bar">
+            <label for="station-select"><strong>Track Arrivals For Station:</strong></label>
+            <select id="station-select" class="form-control">
+                {% for st in stations %}
+                    <option value="{{ st.station_id }}" {% if st.station_id == 'CHOR' %}selected{% endif %}>
+                        {{ st.name }} — {{ '✓ Step-Free' if st.is_step_free_trusted else '⚠ Lift Alert' }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- SVG Real-Coordinate GPS Map of Greater Manchester Corridor -->
+        <div class="gps-map-wrapper" role="img" aria-label="Interactive live GPS map of Greater Manchester stations and moving trains">
+            <svg id="manchester-gps-map" viewBox="0 0 720 420" preserveAspectRatio="xMidYMid meet">
+                <defs>
+                    <pattern id="radar-grid" width="36" height="36" patternUnits="userSpaceOnUse">
+                        <path d="M 36 0 L 0 0 0 36" fill="none" stroke="rgba(128, 239, 128, 0.08)" stroke-width="1"/>
+                    </pattern>
+                </defs>
+                <rect width="720" height="420" fill="#141815" rx="12"/>
+                <rect width="720" height="420" fill="url(#radar-grid)" rx="12"/>
+                <g id="map-corridors-layer"></g>
+                <g id="map-stations-layer"></g>
+                <g id="map-user-gps-layer"></g>
+                <g id="map-trains-layer"></g>
+            </svg>
+        </div>
+
+        <div class="map-legend">
+            <span><i class="legend-dot legend-trusted"></i> Verified Step-Free Station</span>
+            <span><i class="legend-dot legend-warning"></i> Broken Lift / Ramp Alert</span>
+            <span><i class="legend-dot legend-train"></i> Live GPS Train</span>
+            <span id="user-gps-readout" class="gps-coords-pill">GPS Ready</span>
+        </div>
+    </div>
+
+    <!-- Right: Live Incoming Trains & 1-Click Saved Host Ping -->
+    <div class="card arrivals-card">
+        <div class="card-header">
+            <div>
+                <h2 id="selected-station-heading">Chorlton Arrivals</h2>
+                <p class="muted" id="selected-station-note">Checking live lift, ramp &amp; level-boarding status…</p>
+            </div>
+            <span id="selected-station-badge" class="pill pill-green">Trusted Step-Free</span>
+        </div>
+
+        <div id="trains-live-list" class="trains-list" aria-live="polite">
+            <p class="muted">Loading live GPS train positions…</p>
+        </div>
+    </div>
+</section>
+
+<!-- Spontaneous Door-to-Door Journey Planner + Station Lift/Ramp Reliability -->
+<section class="dashboard-grid secondary-grid">
+    <!-- Spontaneous Trip Planner (No Booking Ahead) -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h2>Spontaneous Door-to-Door Planner</h2>
+                <p class="muted">Zero 24-hour booking ahead. Routes around broken lifts automatically.</p>
+            </div>
+        </div>
+
+        <form id="journey-plan-form" class="stack-form">
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label for="origin-station">From Station (Near Saved Address)</label>
+                    <select id="origin-station" name="origin_station_id" class="form-control">
+                        {% for st in stations %}
+                            <option value="{{ st.station_id }}" {% if st.station_id == 'CHOR' %}selected{% endif %}>
+                                {{ st.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="destination-station">To Destination</label>
+                    <select id="destination-station" name="destination_station_id" class="form-control">
+                        {% for st in stations %}
+                            <option value="{{ st.station_id }}" {% if st.station_id == 'STPS' %}selected{% endif %}>
+                                {{ st.name }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary full-width">
+                Plan Instant Step-Free Trip {% if current_user and current_user.preferences.notify_host_automatically %}(+ Auto-Notify Host){% endif %}
+            </button>
+        </form>
+
+        <div id="journey-plan-result" class="journey-result hidden" aria-live="polite"></div>
+    </div>
+
+    <!-- Station Lift & Ramp Reliability + Recent Silent Host Alerts -->
+    <div class="card">
+        <div class="card-header">
+            <div>
+                <h2>Trusted Stops, Lifts &amp; Host Log</h2>
+                <p class="muted">Real-time equipment verification — report broken lifts or ramps in 1 click.</p>
+            </div>
+        </div>
+
+        <div id="stations-trust-list" class="station-trust-list">
+            {% for st in stations %}
+                <div class="station-trust-item" data-station-id="{{ st.station_id }}">
+                    <div>
+                        <strong>{{ st.name }}</strong>
+                        <span class="pill {{ 'pill-green' if st.is_step_free_trusted else 'pill-amber' }}">
+                            {{ st.trust_badge }}
+                        </span>
+                        <p class="small-note">{{ st.accessibility_note }}</p>
+                    </div>
+                    <div class="station-trust-actions">
+                        {% if st.lift_status.value == 'operational' %}
+                            <button type="button" class="btn btn-outline btn-xs report-facility-btn"
+                                    data-station="{{ st.station_id }}" data-status="out_of_service">
+                                Report Lift Fault
+                            </button>
+                        {% else %}
+                            <button type="button" class="btn btn-secondary btn-xs report-facility-btn"
+                                    data-station="{{ st.station_id }}" data-status="operational">
+                                Mark Lift Fixed
+                            </button>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        {% if current_user %}
+            <hr class="divider">
+            <h3>Recent Silent Host Alerts Sent</h3>
+            <ul id="host-notifications-log" class="notification-log">
+                {% if recent_notifications %}
+                    {% for n in recent_notifications %}
+                        <li>
+                            <strong>{{ n.train_id }} at {{ n.station_name }}</strong> —
+                            <span>{{ n.preferred_carriage }}</span>
+                            <span class="pill pill-green">{{ n.status }}</span>
+                        </li>
+                    {% endfor %}
+                {% else %}
+                    <li class="muted">Click "Board &amp; Notify Host" on any train to alert the host digitally with one tap.</li>
+                {% endif %}
+            </ul>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

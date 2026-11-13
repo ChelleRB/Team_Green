@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Register &amp; Save Wheelchair Preferences · GlidePath{% endblock %}
+
+{% block content %}
+<section class="auth-wrapper">
+    <div class="card auth-card">
+        <div class="pill-row">
+            <span class="pill pill-green">SET ONCE · REMEMBERED FOREVER</span>
+        </div>
+        <h1>Create Your GlidePath Profile</h1>
+        <p class="muted">
+            Save your login details, home address, and wheelchair preferences once so hosts are automatically informed—without ever ringing ahead or repeating yourself.
+        </p>
+
+        <form method="POST" action="{{ url_for('web.register') }}" class="stack-form">
+            <fieldset class="form-section">
+                <legend>1. Login &amp; Door-to-Door Address</legend>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="full_name">Full Name</label>
+                        <input type="text" id="full_name" name="full_name" class="form-control"
+                               placeholder="e.g. Maya Okafor" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" class="form-control"
+                               placeholder="maya@example.org" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password (min. 6 characters)</label>
+                    <input type="password" id="password" name="password" class="form-control"
+                           minlength="6" placeholder="Create a secure password" required>
+                </div>
+
+                <div class="form-row-3-1">
+                    <div class="form-group">
+                        <label for="home_address">Home Street Address (for Door-to-Door Step-Free Routing)</label>
+                        <input type="text" id="home_address" name="home_address" class="form-control"
+                               placeholder="42 Wilbraham Road, Chorlton, Manchester" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="postcode">Postcode</label>
+                        <input type="text" id="postcode" name="postcode" class="form-control"
+                               placeholder="M21 0UF" value="M21 0UF" required>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="form-section highlight-fieldset">
+                <legend>2. One-Click Wheelchair &amp; Host Notification Preferences</legend>
+
+                <label class="preference-card-toggle" for="is_wheelchair_user">
+                    <input type="checkbox" id="is_wheelchair_user" name="is_wheelchair_user" checked>
+                    <div>
+                        <strong>♿ I am a wheelchair user (Save to profile &amp; let hosts know)</strong>
+                        <p class="small-note">Saves your wheelchair requirement permanently so you never have to fill out assistance forms again.</p>
+                    </div>
+                </label>
+
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label for="wheelchair_type">Mobility Aid Type</label>
+                        <select id="wheelchair_type" name="wheelchair_type" class="form-control">
+                            <option value="power" selected>Power Wheelchair</option>
+                            <option value="manual">Manual Wheelchair</option>
+                            <option value="scooter">Mobility Scooter</option>
+                            <option value="none">None</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="preferred_carriage_zone">Preferred Accessible Boarding Zone</label>
+                        <select id="preferred_carriage_zone" name="preferred_carriage_zone" class="form-control">
+                            <option value="Carriage B (Level-Boarding Bay)" selected>Carriage B (Level-Boarding Bay)</option>
+                            <option value="Carriage A (Front Accessible Zone)">Carriage A (Front Accessible Zone)</option>
+                            <option value="Nearest Level-Boarding Door">Nearest Level-Boarding Door</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label class="preference-card-toggle" for="notify_host_automatically">
+                    <input type="checkbox" id="notify_host_automatically" name="notify_host_automatically" checked>
+                    <div>
+                        <strong>📡 Automatically notify train/station host digitally when I plan or board</strong>
+                        <p class="small-note">Sends a silent digital alert to the onboard host terminal — zero phone calls or booking ahead.</p>
+                    </div>
+                </label>
+
+                <label class="preference-card-toggle" for="step_free_level_boarding_only">
+                    <input type="checkbox" id="step_free_level_boarding_only" name="step_free_level_boarding_only" checked>
+                    <div>
+                        <strong>🛤️ Prioritise independent step-free level boarding (no staff ramp needed)</strong>
+                        <p class="small-note">Automatically routes around stations with broken lifts or stepped platforms.</p>
+                    </div>
+                </label>
+
+                <div class="form-row-2">
+                    <label class="preference-card-toggle" for="audio_guidance_enabled">
+                        <input type="checkbox" id="audio_guidance_enabled" name="audio_guidance_enabled" checked>
+                        <div>
+                            <strong>🔊 Clear Audio Announcements</strong>
+                        </div>
+                    </label>
+                    <label class="preference-card-toggle" for="visual_guidance_high_contrast">
+                        <input type="checkbox" id="visual_guidance_high_contrast" name="visual_guidance_high_contrast" checked>
+                        <div>
+                            <strong>👁️ High-Contrast Visual Guidance</strong>
+                        </div>
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label for="assistance_notes">Optional Standing Note for Host</label>
+                    <input type="text" id="assistance_notes" name="assistance_notes" class="form-control"
+                           value="Independent step-free boarding preferred; notify host silently of arrival.">
+                </div>
+            </fieldset>
+
+            <button type="submit" class="btn btn-primary btn-lg full-width">
+                Save Preferences &amp; Start Travelling Independently
+            </button>
+        </form>
+    </div>
+</section>
+{% endblock %}
+

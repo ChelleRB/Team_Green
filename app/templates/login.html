@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Sign In · GlidePath{% endblock %}
+
+{% block content %}
+<section class="auth-wrapper narrow-auth">
+    <div class="card auth-card">
+        <h1>Sign In to GlidePath</h1>
+        <p class="muted">Load your saved address, wheelchair profile, and 1-click silent host preferences.</p>
+
+        <form method="POST" action="{{ url_for('web.login') }}" class="stack-form">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" class="form-control"
+                       placeholder="maya.okafor@manchester.org" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" class="form-control"
+                       placeholder="Enter your password" required>
+            </div>
+            <button type="submit" class="btn btn-primary full-width">Sign In</button>
+        </form>
+
+        <hr class="divider">
+        <div class="demo-box">
+            <p><strong>Hackathon Persona Quick Access:</strong></p>
+            <p class="small-note">Sign in instantly as <strong>Maya Okafor</strong> (32 · Policy Analyst · Manchester · Power wheelchair user).</p>
+            <form method="POST" action="{{ url_for('web.demo_maya_login') }}">
+                <button type="submit" class="btn btn-secondary full-width">One-Click Sign In as Maya Okafor</button>
+            </form>
+        </div>
+
+        <p class="center-text muted">
+            New here? <a href="{{ url_for('web.register') }}">Register &amp; save your wheelchair preferences</a>
+        </p>
+    </div>
+</section>
+{% endblock %}
+
